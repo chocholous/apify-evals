@@ -9,6 +9,7 @@
         "strict": true,
         "esModuleInterop": true,
         "declaration": true,
-        "lib": ["DOM", "ES2022"]
+        "lib": ["DOM", "ES2022"],
+        "types": ["node"]
     }
 }
