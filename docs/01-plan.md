@@ -42,7 +42,7 @@ Markdown s `---` separátory, `## Test` / `## Checkpoint` / `## Monitor`. `abort
 Secure input, dostupné v init scriptu, po použití smazané, v logu maskovány.
 
 ### US7: Token budget a abort
-Real-time tracking, kill při překročení limitu, výsledek s `aborted: true`.
+Budget control přes `--max-budget-usd` (nativní) + mezi-turnový SIGTERM jako fallback. Výsledek s `aborted: true`.
 
 ---
 
@@ -53,9 +53,9 @@ Real-time tracking, kill při překročení limitu, výsledek s `aborted: true`.
 | Runtime | Standalone Dockerfile (Node 24 + CLI tools) |
 | Jazyk | TypeScript (`ts-empty` template) |
 | Repo struktura | Monorepo s npm workspaces |
-| Závislosti | `apify`, `gray-matter`, `@anthropic-ai/sdk` |
+| Závislosti | `apify`, `gray-matter` (vše ostatní built-in Node.js) |
 | Agent execution | `child_process.spawn()` + `readline` (NDJSON streaming) |
-| Judge | Dual: deterministic (contains/regex/json-schema) + LLM (Anthropic tool_use) |
+| Judge | Dual: deterministic (contains/regex/json-schema) + LLM (`claude -p --json-schema`) |
 | Init scripts | Předdefinované presets (dropdown) + custom textarea |
 | Storage | KV store (JSONL conversation log) + Dataset (structured results) |
 | Metriky | Structured JSON logs. Eval framework (promptfoo) ve Fázi 4. |
@@ -64,8 +64,8 @@ Real-time tracking, kill při překročení limitu, výsledek s `aborted: true`.
 
 | Agent | Command | Output | Fáze |
 |-------|---------|--------|------|
-| Claude Code | `claude -p "prompt" --output-format stream-json` | NDJSON | F1 |
-| Codex CLI | `codex exec "prompt" --json` | JSONL | F2 |
+| Claude Code | `claude -p "prompt" --output-format stream-json --verbose --dangerously-skip-permissions --no-session-persistence` | NDJSON (flat events) | F1 |
+| Codex CLI | `codex exec "prompt" --json --full-auto` | JSONL | F2 |
 | OpenCode | `opencode -p "prompt" -f json` | JSON | F2 |
 
 ### Custom metriky (postupně)
@@ -76,16 +76,18 @@ Real-time tracking, kill při překročení limitu, výsledek s `aborted: true`.
 
 ---
 
-## Spike testy (Fáze 1)
+## Spike testy — výsledky
 
-| # | Spike | Priorita | Blokuje |
-|---|-------|----------|---------|
-| S1 | Claude Code subprocess streaming (NDJSON parsing) | KRITICKÝ | Celý Runner |
-| S2 | Claude CLI v Apify Dockerfile (build + run na cloudu) | KRITICKÝ | Cloud deployment |
-| S3 | Custom LLM judge (Anthropic tool_use structured verdict) | KRITICKÝ | Checkpoint validaci |
-| S4 | Scenario Markdown parser (gray-matter + custom) | STŘEDNÍ | Scenario loading |
-| S5 | Env var injection + masking v logu | STŘEDNÍ | US6 |
-| S6 | Token budget abort (real-time tracking + kill) | STŘEDNÍ | US7 |
+Všechny spiky proběhly úspěšně. Kód v `spikes/`.
+
+| # | Spike | Status | Klíčové zjištění |
+|---|-------|--------|-----------------|
+| S1 | Claude subprocess streaming | **PASS** | `--verbose` povinný. Event structure flat (ne nested). `modelUsage` per model. stdin musí být `ignore`. |
+| S2 | Claude CLI v Apify Dockerfile | **Přeskočen** | Triviální — ai-sandbox pattern ověřený, `curl install` funguje. |
+| S3 | LLM judge via CLI | **PASS** | `claude -p --json-schema` funguje (žádný API klíč potřeba). Output v `structured_output` field. Vyžaduje `--max-turns 3`. |
+| S4 | Scenario Markdown parser | **PASS** | gray-matter + regex parser funguje. 1-3 testy, optional monitor, YAML frontmatter. |
+| S5 | Env var injection + masking | **PASS** | `spawn` env injection funguje. `replaceAll` masking spolehlivý. Potřeba `--dangerously-skip-permissions`. |
+| S6 | Token budget abort | **PASS** | `--max-budget-usd` nativní control funguje. SIGTERM between-turn funguje. Usage per-turn, ne per-token. |
 
 ---
 
@@ -95,7 +97,7 @@ Real-time tracking, kill při překročení limitu, výsledek s `aborted: true`.
 **US1, US5, US6, US7**
 
 1. **F1.0: Projekt setup** — monorepo, `actors/runner/`, `shared/`, CLAUDE.md, AGENTS.md, ESLint, Prettier
-2. **F1.1: Spike testy** — S1-S6, dokumentovat výsledky, upravit plán
+2. ~~**F1.1: Spike testy**~~ — **HOTOVO** (S1-S6 proběhly, výsledky výše)
 3. **F1.2: Shared library** — types, scenario-parser, claude adapter, judge, metrics, log-masker, unit testy
 4. **F1.3: Runner Actor** — input/output/dataset schema, Dockerfile, main loop, streaming tracking, env var handling, KV + dataset storage, graceful abort
 5. **F1.4: Init script presets** — mcp_native, cli_native, mcpc + custom textarea
@@ -169,4 +171,4 @@ apify-evals/
 - [ ] Apify platform credits budget
 - [ ] GitHub repo přístup pro cílový org
 - [ ] Standby mode (Fáze 5?)
-- [ ] Auth pro Claude Code v Dockerfile (`ANTHROPIC_API_KEY` vs `claude setup-token`)
+- [x] ~~Auth pro Claude Code v Dockerfile~~ — OAuth token nebo subscription stačí, žádný API klíč potřeba (ověřeno S1, S3, S5)

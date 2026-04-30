@@ -48,7 +48,7 @@ Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence
 |-----------|-----------|------------|--------|
 | Type safety pro eval schémata | 14+ interfaces (gbrain-evals vzor) | Žádná compile-time kontrola | Type hints, runtime-only |
 | Apify SDK | Primární, Node-first | Stejný SDK | Sekundární, tenčí docs |
-| LLM-as-judge | `@anthropic-ai/sdk` + tool_use (ověřeno gbrain-evals) | Stejné | Funguje, méně příkladů |
+| LLM-as-judge | `claude -p --json-schema` (ověřeno spike S3) | Stejné | Funguje, méně příkladů |
 | Subprocess streaming | `spawn()` + `readline` — nativní | Stejné | `asyncio.subprocess` — edge cases |
 | YAML parsing | `gray-matter` — battle-tested (6K stars) | Stejné | `python-frontmatter` — menší komunita |
 | Reference projekty | gbrain-evals (TS), ai-sandbox (TS) | meta-engine (bash+Python mix) | — |
@@ -58,8 +58,8 @@ Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence
 **Závislosti (minimální):**
 - `apify` — SDK (included v template)
 - `gray-matter` — YAML frontmatter parsing
-- `@anthropic-ai/sdk` — LLM-as-judge
 - Vše ostatní built-in Node.js: `child_process.spawn`, `readline`, `AbortController`
+- ~~`@anthropic-ai/sdk`~~ — **nepotřebujeme** (spike S3 ukázal, že LLM judge funguje přes `claude -p --json-schema`)
 
 ---
 
@@ -125,14 +125,17 @@ Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence
 
 ## D7: Eval framework — custom judge pro MVP
 
-### Rozhodnutí: Custom LLM judge (@anthropic-ai/sdk tool_use) pro MVP, promptfoo ve Fázi 4
+### Rozhodnutí: LLM judge přes `claude -p --json-schema` pro MVP, promptfoo ve Fázi 4
 
-### Zamítnuto: DeepEvals (Python), promptfoo od začátku
+**Aktualizováno po spike testech:** Původně jsme plánovali `@anthropic-ai/sdk` s tool_use. Spike S3 ukázal, že `claude -p --json-schema` funguje — structured output v `result.structured_output` fieldu, žádný API klíč potřeba (OAuth/subscription stačí). Vyžaduje `--max-turns 3` (interní tool call).
 
-**Důvody pro custom judge MVP:**
-- Minimální závislosti (jen @anthropic-ai/sdk)
-- Ověřený pattern (gbrain-evals)
-- Plná kontrola nad judge prompt a structured output
+### Zamítnuto: @anthropic-ai/sdk (přímé API volání), DeepEvals (Python), promptfoo od začátku
+
+**Důvody pro CLI judge:**
+- Žádná extra závislost (claude CLI je už v Dockerfile)
+- Žádný API klíč potřeba — funguje se stejným auth jako agent run
+- `--json-schema` vynutí structured output (verdict/evidence/confidence)
+- Stejný mechanismus jako agent run = méně pohyblivých částí
 
 **Proč ne DeepEvals:**
 - Python framework, náš Actor je TypeScript
@@ -197,3 +200,38 @@ Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence
 3. **Fáze 4:** Custom JS/TS scorer funkce jako soubor
 
 ### Důvod: Inkrementální složitost. Předdefinované typy pokryjí 80% use cases. Custom YAML pokryje dalších 15%. JS/TS funkce pro edge cases.
+
+---
+
+## D12: Agent permissions — dangerously-skip-permissions
+
+### Rozhodnutí: Eval agent běží s `--dangerously-skip-permissions`
+
+**Ověřeno spike S5.** Bez tohoto flagu agent odmítá spouštět Bash příkazy (permission prompty). V eval kontextu agent musí mít plný přístup — testujeme jeho schopnost splnit úkol, ne bezpečnostní restrikce.
+
+**Riziko:** Agent může provést destruktivní operace. Mitigace: běží v izolovaném Docker kontejneru na Apify platformě.
+
+---
+
+## D13: Token budget — nativní --max-budget-usd + SIGTERM
+
+### Rozhodnutí: Dvojitá ochrana
+
+**Ověřeno spike S6.**
+
+1. **`--max-budget-usd N`** — claude CLI nativně zastaví agenta po překročení budget limitu (exit code 1)
+2. **Mezi-turnový SIGTERM** — fallback pro případ, kdy chceme killnout na základě jiného kritéria (např. počet turnů, wallclock timeout)
+
+### Zamítnuto: Real-time per-token budget tracking
+
+**Důvod:** Spike S6 ukázal, že token usage v assistant message events je per-turn snapshot (ne inkrementální streaming). Real-time per-token tracking není možný přes current CLI interface. `--max-budget-usd` je dostatečný a přesnější.
+
+---
+
+## D14: Auth — OAuth token, žádný API klíč
+
+### Rozhodnutí: Claude Code OAuth token / subscription pro vše
+
+**Ověřeno spike S1, S3, S5.** Claude CLI funguje s OAuth autentizací. LLM judge přes `claude -p --json-schema` nevyžaduje samostatný `ANTHROPIC_API_KEY`.
+
+V Apify Docker kontejneru bude auth řešený přes env var `CLAUDE_CODE_OAUTH_TOKEN` (secure input od uživatele).
