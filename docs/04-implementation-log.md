@@ -79,19 +79,44 @@
 
 ---
 
-## F1.3: Runner Actor — DALŠÍ
+## F1.3: Runner Actor — IN PROGRESS
 
-### Plán kroků
+### Co jsme udělali (F1.3a-d) — 2026-04-30
+- Input schema (`input_schema.json`) — agent, model, scenario, systemPrompt, maxBudgetUsd, maxRetries, maxTurns, envVariables, initPreset, initBashScript, mcpConfigJson
+- Main loop: parse scenario → per test: `runClaude()` → `judgeCheckpoint()` → `Actor.pushData()`
+- Conversation log (masked) → KV store `CONVERSATION-LOG`
+- Retry loop s `maxRetries` + `abortOnFailure` break
 
-| Krok | Co | Ověření | Naplní US |
-|------|----|---------|----|
-| F1.3a | Input schema | `apify run` přijme input | — |
-| F1.3b | Main loop: parse → run claude → collect | E2E: smoke-test.md → agent odpověď | — |
-| F1.3c | Judge integration | E2E: verdict v datasetu | US1 partial |
-| F1.3d | Dataset output + KV log | E2E: structured results + JSONL log | **US1 complete** |
-| F1.3e | Env var injection + masking | E2E: secrets maskovány v KV | **US6** |
-| F1.3f | Budget abort | E2E: nízký budget → aborted | **US7** |
-| F1.3g | Multi-step + abortOnFailure | E2E: 2-step scénář | **US5** |
+### Jak jsme ověřili
+- `tsc` build: PASS
+- E2E `apify run` se smoke-test.md:
+  - Agent odpověděl (1 turn, $0.15, 2.2s)
+  - Judge vyhodnotil checkpoint jako pass (confidence: 0.99)
+  - Dataset obsahuje structured AgentResult s metrikami
+  - KV store obsahuje CONVERSATION-LOG (JSONL)
+
+### Commit
+`8ca8528` F1.3a-d: Runner Actor — full pipeline, US1 complete
+
+### Zjištěné problémy z prvního E2E runu
+
+1. **Agent odpovídá česky** — zdědil globální CLAUDE.md s "Always respond in Czech". Řešení: přidat `--bare` flag aby agent nečetl uživatelskou konfiguraci, nebo vynutit jazyk v system promptu.
+2. **Default model je Opus ($0.15 za triviální otázku)** — v produkci defaultovat na levnější model nebo vyžadovat explicitní volbu.
+3. **Judge events se nelogují** — conversation log obsahuje jen agent run events. Judge run by měl být logován zvlášť (např. `JUDGE-LOG` v KV store).
+4. **Monitor sekce se neimplementuje** — scénář má `## Monitor`, ale runner ji ignoruje. Potřebujeme buď monitor run (další agent call), nebo extrakci z agent events.
+
+### Zbývající kroky
+
+| Krok | Co | Ověření | Naplní US | Status |
+|------|----|---------|----|--------|
+| F1.3a-d | Input + main loop + judge + output | E2E smoke-test | **US1** | **DONE** |
+| F1.3e | Env var injection + masking E2E test | Scénář se secrets → maskovány v KV | **US6** | TODO — mechanismus implementován, chybí E2E test |
+| F1.3f | Budget abort E2E test | Nízký budget → aborted result | **US7** | TODO — mechanismus implementován, chybí E2E test |
+| F1.3g | Multi-step + abortOnFailure E2E test | 2-step scénář → per-test breakdown | **US5** | TODO — mechanismus implementován, chybí E2E test |
+| F1.3h | `--bare` flag pro izolaci agenta | Agent nečte uživatelský CLAUDE.md | — | TODO |
+| F1.3i | Judge log do KV store | `JUDGE-LOG` key s judge events | — | TODO |
+| F1.3j | Monitor sekce | Implementovat ## Monitor extraction | — | TODO (scope TBD) |
+| F1.3k | Default model konfigurace | Rozumný default model pro eval, ne Opus | — | TODO |
 
 ---
 
@@ -99,10 +124,10 @@
 
 | US | Popis | Status | Ověřeno v |
 |----|-------|--------|-----------|
-| US1 | Spustit eval s jedním agentem | Čeká na F1.3d | — |
+| US1 | Spustit eval s jedním agentem | **DONE** | F1.3a-d E2E smoke-test |
 | US2 | Porovnat MCP vs CLI | Čeká na F3 | — |
 | US3 | Multi-agent test | Čeká na F2+F3 | — |
 | US4 | Regression detection | Čeká na F3 | — |
-| US5 | Multi-step testy | Čeká na F1.3g | — |
-| US6 | Bezpečné env vars | Čeká na F1.3e | — |
-| US7 | Token budget abort | Čeká na F1.3f | — |
+| US5 | Multi-step testy | Mechanismus hotov, chybí E2E test | — |
+| US6 | Bezpečné env vars | Mechanismus hotov, chybí E2E test | — |
+| US7 | Token budget abort | Mechanismus hotov, chybí E2E test | — |
