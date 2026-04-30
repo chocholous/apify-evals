@@ -1,4 +1,4 @@
-# Agent Evals — Projektový dokument
+# Agent Evals — Projektový dokument v2
 
 ## Context
 
@@ -10,14 +10,14 @@ Apify vyvíjí MCP server a CLI nástroje. Potřebujeme:
 
 Dva Apify Actory v TypeScript monorepu:
 - **Actor #1: Agent Evals Runner** — spustí jeden testovací scénář s jedním AI agentem
-- **Actor #2: Agent Evals Orchestrator** — orchestruje více scénářů přes více agentů
+- **Actor #2: Agent Evals Orchestrator** — orchestruje více scénářů přes více agentů (Fáze 3)
 
 ---
 
 ## 1. Cíle
 
 ### C1: Reproducibilní eval pipeline
-Spustit libovolný Markdown scénář s libovolným AI agentem (Claude Code, Codex, OpenCode, AI SDK) a dostat strukturované, porovnatelné výsledky.
+Spustit libovolný Markdown scénář s libovolným AI agentem (Claude Code, Codex, OpenCode) a dostat strukturované, porovnatelné výsledky.
 
 ### C2: Multi-agent porovnání
 Porovnat výkon agentů na stejných scénářích side-by-side: success rate, cost, token count, latency, turn count.
@@ -53,11 +53,11 @@ Checkpoint-based validace výsledků — deterministická (structural checks) + 
 **abych** ověřil, že můj MCP server funguje pro daný use case
 
 **Acceptance criteria:**
-- Nahraju Markdown soubor se scénářem
-- Vyberu agenta (dropdown: Claude Code, Codex, OpenCode, AI SDK)
+- Nahraju Markdown soubor se scénářem (input schema file upload)
+- Vyberu agenta (dropdown: Claude Code, Codex, OpenCode)
 - Volitelně nastavím model, max tokens, env vars
 - Po doběhnutí vidím v datasetu: pass/fail per checkpoint, token count, cost, duration
-- V KV store najdu plný conversation log
+- V KV store najdu plný conversation log (JSONL)
 
 ### US2: Vývojář porovná MCP vs CLI
 **Jako** Apify vývojář
@@ -76,8 +76,8 @@ Checkpoint-based validace výsledků — deterministická (structural checks) + 
 **abych** porovnal kvalitu agentů
 
 **Acceptance criteria:**
-- Orchestrator přijme scénář + seznam agentů
-- Spustí Runner pro každého agenta (volitelně s N opakováními)
+- Orchestrator přijme scénář + seznam agentů + počet opakování (N)
+- Spustí Runner pro každého agenta N×
 - Vrátí matici: agent × metrika s mean±stddev
 
 ### US4: Vývojář detekuje regresi
@@ -119,7 +119,7 @@ Checkpoint-based validace výsledků — deterministická (structural checks) + 
 **abych** omezil náklady na eval run
 
 **Acceptance criteria:**
-- Runner sleduje token consumption ze streaming output
+- Runner sleduje token consumption z real-time streaming output
 - Po překročení limitu agent subprocess killne
 - Výsledek obsahuje `aborted: true` s reason a spotřebovanými tokeny
 
@@ -140,117 +140,215 @@ Checkpoint-based validace výsledků — deterministická (structural checks) + 
 ### TC3: Monorepo s npm workspaces
 **Proč:** Runner a Orchestrator sdílejí scenario parser, metriky, typy, agent adaptery. Monorepo = atomické změny, přímé importy, jeden CI pipeline. Apify to oficiálně podporuje (`dockerContextDir`).
 
+**Pozn.:** Monorepo se plně využije až ve Fázi 3 (Orchestrator). Ve Fázi 1-2 stačí jeden Actor, ale strukturu připravíme od začátku.
+
 ### TC4: Agent CLI adapter pattern
 **Proč:** Každý agent (Claude, Codex, OpenCode) má jiné CLI rozhraní. Adapter abstrahuje: `spawn()` s správnými flagy, parsování output formátu, token counting.
 
-| Agent | Non-interactive command | Output format |
-|-------|------------------------|---------------|
-| Claude Code | `claude -p "prompt" --output-format stream-json` | NDJSON stream |
-| Codex CLI | `codex exec "prompt" --json` | JSONL events |
-| OpenCode | `opencode -p "prompt" -f json` | JSON |
-| AI SDK | Programmatic (Vercel AI SDK) | Structured |
+| Agent | Non-interactive command | Output format | Fáze |
+|-------|------------------------|---------------|------|
+| Claude Code | `claude -p "prompt" --output-format stream-json` | NDJSON stream | F1 (MVP) |
+| Codex CLI | `codex exec "prompt" --json` | JSONL events | F2 |
+| OpenCode | `opencode -p "prompt" -f json` | JSON | F2 |
 
 ### TC5: Dual judge system
 **Proč:** Deterministické checkpointy (regex, JSON schema, compile) jsou rychlé a levné. LLM judge (Anthropic tool_use) pro open-ended validaci. Kombinace maximalizuje spolehlivost a minimalizuje cost.
 
+**Výhled custom metrik (3 úrovně, postupně):**
+1. Předdefinované typy checkpointů (contains, regex, json-schema, llm-judge) — Fáze 1
+2. Custom metriky v YAML frontmatter scénáře — Fáze 2
+3. Custom JS/TS scorer funkce jako soubor — Fáze 4
+
+### TC6: Eval framework integrace (Fáze 4)
+**Kandidát:** Promptfoo (20K+ stars, MIT, built-in agent trajectory eval: tool-used, tool-sequence, goal-success). Alternativně custom judge + autoevals.
+
+**Pozn.:** Vyžaduje hlubší research v Fázi 4. Pro MVP stačí custom judge přes @anthropic-ai/sdk.
+
+### TC7: Init script presets + custom
+**Proč:** Presets pro rychlý start (dropdown v Apify Console), custom script pro plnou flexibilitu. Preset se použije jako základ, custom script se přidá za něj.
+
+Předdefinované presets:
+- `mcp_native` — nakonfiguruje MCP server (mcp.json)
+- `cli_native` — nainstaluje nativní CLI (gh, linear, apify-cli)
+- `mcpc` — nainstaluje mcpc + nakonfiguruje MCP přes mcpc
+
+### TC8: Dual storage — logs + výsledky
+- **KV store:** Surový JSONL conversation log (pro debugging, plný kontext)
+- **Dataset:** Agregované strukturované výsledky per test step (pro reporting, Apify Console views, filtrování)
+
 ---
 
-## 5. Spike testy (feasibility ověření)
+## 5. Spike testy (Fáze 1)
 
-### Spike 1: Claude Code subprocess streaming
+### Spike 1: Claude Code subprocess streaming (KRITICKÝ)
 **Cíl:** Ověřit, že `claude -p` stream-json output jde parsovat v reálném čase přes `spawn` + `readline`.
-**Jak:** Jednoduchý TS skript — spawn claude, parsovat NDJSON, extrahovat token counts.
+**Jak:** TS skript — spawn claude, parsovat NDJSON, extrahovat token counts.
 **Pass kritérium:** Token counts matchují finální `result` event.
+**Blokuje:** Celý Runner.
 
-### Spike 2: Codex CLI subprocess
-**Cíl:** Ověřit, že `codex exec --json` funguje headless s `OPENAI_API_KEY`.
-**Jak:** Spawn codex v Docker containeru, zachytit output.
-**Pass kritérium:** Structured output se exit code 0.
-
-### Spike 3: LLM-as-judge s tool_use
-**Cíl:** Ověřit, že Anthropic SDK tool_use vrací structured verdict.
-**Jak:** Poslat judge prompt s evidence + checkpoint, vynutit structured output přes tool definition.
-**Pass kritérium:** Vrátí `{verdict: "pass"|"fail"|"unclear", evidence: string, confidence: number}`.
-
-### Spike 4: Markdown scenario parser
-**Cíl:** Ověřit, že `gray-matter` + vlastní parser zvládne YAML frontmatter + `---` separátory + `## Test`/`## Checkpoint`/`## Monitor` sekce.
-**Jak:** Napsat parser, otestovat na 3 vzorových scénářích.
-**Pass kritérium:** Parsuje korektně frontmatter, N testů, každý s test/checkpoint/monitor.
-
-### Spike 5: Apify Actor s CLI v Dockerfile
+### Spike 2: Claude CLI v Apify Dockerfile (KRITICKÝ)
 **Cíl:** Ověřit, že Dockerfile s `claude` CLI buildí a běží na Apify platformě.
 **Jak:** Minimální Actor — nainstaluje claude, spustí `claude --version`, pushne výsledek do datasetu.
 **Pass kritérium:** Úspěšný build + run na Apify Cloud.
+**Blokuje:** Cloud deployment.
 
-### Spike 6: Monorepo deploy
-**Cíl:** Ověřit, že `apify push` funguje s `dockerContextDir` pro dva Actory v jednom repo.
-**Jak:** Dva minimální Actory sdílející jeden modul ze `shared/`.
-**Pass kritérium:** Oba Actory se buildí a běží nezávisle na Apify Cloud.
+### Spike 3: Custom LLM judge (KRITICKÝ)
+**Cíl:** Ověřit, že Anthropic SDK tool_use vrací structured verdict.
+**Jak:** Poslat judge prompt s evidence + checkpoint, vynutit structured output přes tool definition.
+**Pass kritérium:** Vrátí `{verdict: "pass"|"fail"|"unclear", evidence: string, confidence: number}`.
+**Blokuje:** Checkpoint validaci.
+
+### Spike 4: Scenario Markdown parser (STŘEDNÍ)
+**Cíl:** Ověřit, že `gray-matter` + vlastní parser zvládne YAML frontmatter + `---` separátory + `## Test`/`## Checkpoint`/`## Monitor` sekce.
+**Jak:** Napsat parser, otestovat na 3 vzorových scénářích.
+**Pass kritérium:** Parsuje korektně frontmatter, N testů, každý s test/checkpoint/monitor.
+**Riziko:** Nízké — gray-matter je ověřená knihovna.
+
+### Spike 5: Env var injection + masking (STŘEDNÍ)
+**Cíl:** Ověřit bezpečné předání env vars do claude subprocess + maskování v logu.
+**Jak:** Spawn claude s custom env, zachytit output, ověřit že secrets nejsou v logu.
+**Pass kritérium:** Agent má přístup k env vars, ale v JSONL logu jsou maskovány.
+**Blokuje:** US6.
+
+### Spike 6: Token budget abort (STŘEDNÍ)
+**Cíl:** Ověřit real-time token tracking ze streaming output + kill subprocess při překročení limitu.
+**Jak:** Spawn claude s malým budgetem, parsovat streaming tokeny, killnout po limitu.
+**Pass kritérium:** Subprocess se korektně ukončí, výsledek obsahuje spotřebované tokeny.
+**Blokuje:** US7.
 
 ---
 
-## 6. Implementační plán
+## 6. Implementační plán (fázovaný)
 
-### Fáze 0: Projekt setup (den 1)
-- [ ] Inicializovat monorepo s npm workspaces
-- [ ] Scaffold `actors/runner/` a `actors/orchestrator/` z `ts-empty`
-- [ ] Vytvořit `shared/` package s základní strukturou
-- [ ] Vytvořit CLAUDE.md a AGENTS.md
-- [ ] Nastavit ESLint, Prettier, tsconfig
-- [ ] Git init + push na GitHub (agentify/agent-evals)
-- [ ] Nainstalovat `apify/agent-skills` plugin globálně
+### Fáze 1: MVP — Runner + Claude Code
+**Scope:** Fungující Runner Actor s Claude Code agentem, custom LLM judge, scenario parser.
+**User stories:** US1, US5, US6, US7
 
-### Fáze 1: Spike testy (den 2-3)
-- [ ] Spike 1: Claude Code streaming
-- [ ] Spike 2: Codex CLI headless
-- [ ] Spike 3: LLM judge tool_use
-- [ ] Spike 4: Scenario parser
-- [ ] Spike 5: Actor + CLI Dockerfile
-- [ ] Spike 6: Monorepo deploy
-- [ ] Dokumentovat výsledky spikes, upravit plán dle nálezů
+- [ ] **F1.0: Projekt setup**
+  - Inicializovat monorepo s npm workspaces (připravit strukturu pro Orchestrator)
+  - Scaffold `actors/runner/` z `ts-empty`
+  - Vytvořit `shared/` package s základní strukturou
+  - CLAUDE.md + AGENTS.md
+  - ESLint, Prettier, tsconfig
+  - Git push na GitHub
 
-### Fáze 2: Shared library (den 4-5)
-- [ ] `shared/src/types.ts` — TypeScript interfaces pro scenario, test, checkpoint, result, metrics
-- [ ] `shared/src/scenario-parser.ts` — Markdown + YAML frontmatter parser
-- [ ] `shared/src/agents/` — Agent CLI adaptery (claude, codex, opencode)
-- [ ] `shared/src/judge.ts` — Dual judge (deterministic + LLM)
-- [ ] `shared/src/metrics.ts` — Token counting, timing, cost calculation
-- [ ] Unit testy pro parser a judge
+- [ ] **F1.1: Spike testy**
+  - Spike 1: Claude subprocess streaming (KRITICKÝ)
+  - Spike 2: Actor + CLI Dockerfile (KRITICKÝ)
+  - Spike 3: LLM judge tool_use (KRITICKÝ)
+  - Spike 4: Scenario parser
+  - Spike 5: Env var injection + masking
+  - Spike 6: Token budget abort
+  - Dokumentovat výsledky, upravit plán dle nálezů
 
-### Fáze 3: Runner Actor (den 6-8)
-- [ ] Input schema (agent, model, scenario, envVars, mcpConfig, initScript, maxTokens, maxRetries)
-- [ ] Output schema + dataset schema s views
-- [ ] Dockerfile s Claude/Codex/OpenCode CLI
-- [ ] Main orchestration loop: parse scenario -> per test: run agent -> judge checkpoint -> collect metrics
-- [ ] Streaming token tracking + budget abort
-- [ ] Env var injection + cleanup + log masking
-- [ ] Conversation log do KV store
-- [ ] Health probe + graceful abort handling
-- [ ] Lokální testy s `apify run`
-- [ ] Cloud deploy + test
+- [ ] **F1.2: Shared library (core)**
+  - `shared/src/types.ts` — TypeScript interfaces (scenario, test, checkpoint, result, metrics)
+  - `shared/src/scenario-parser.ts` — Markdown + YAML frontmatter parser
+  - `shared/src/agents/claude.ts` — Claude Code CLI adapter (spawn + NDJSON streaming)
+  - `shared/src/judge.ts` — Dual judge (deterministic: contains/regex/json-schema + LLM: Anthropic tool_use)
+  - `shared/src/metrics.ts` — Token counting, timing, cost calculation
+  - `shared/src/log-masker.ts` — Env var masking v conversation logs
+  - Unit testy pro parser, judge, masker
 
-### Fáze 4: Orchestrator Actor (den 9-10)
-- [ ] Input schema (agents[], scenarios[], presets[], repetitions, baselineDatasetId)
+- [ ] **F1.3: Runner Actor**
+  - Input schema (agent, model, scenario file, envVars, mcpConfig, initScript, maxTokens, maxRetries)
+  - Output schema + dataset schema s views
+  - Dockerfile (Node 24 + Claude CLI, inspirace z ai-sandbox)
+  - Main loop: parse scenario -> per test: run agent -> judge checkpoint -> collect metrics
+  - Streaming token tracking + budget abort
+  - Env var injection + cleanup + log masking
+  - Conversation log -> KV store (JSONL), results -> dataset (structured JSON)
+  - Graceful abort handling (`Actor.on('aborting')`)
+  - Lokální testy s `apify run`
+  - Cloud deploy + test
+
+- [ ] **F1.4: Init script presets**
+  - Preset: `mcp_native` (MCP config.json)
+  - Preset: `cli_native` (gh, apify-cli)
+  - Preset: `mcpc` (mcpc + config)
+  - Dropdown v input schema + custom textarea
+
+### Fáze 2: Multi-agent — Codex + OpenCode adaptéry
+**Scope:** Rozšířit Runner o Codex CLI a OpenCode adaptéry.
+**User stories:** US1 (rozšíření na 3 agenty)
+
+- [ ] `shared/src/agents/codex.ts` — Codex CLI adapter
+- [ ] `shared/src/agents/opencode.ts` — OpenCode CLI adapter
+- [ ] Dockerfile update (+ Codex CLI + OpenCode CLI)
+- [ ] Testy s reálnými scénáři pro všechny 3 agenty
+- [ ] Agent-specific token counting a cost normalizace
+
+### Fáze 3: Orchestrator Actor
+**Scope:** Actor #2 pro multi-agent, multi-scenario orchestraci.
+**User stories:** US2, US3, US4
+
+- [ ] Input schema (agents[], scenarios[], presets[], repetitions N, baselineDatasetId)
 - [ ] Output schema + dataset views (comparison matrix)
-- [ ] Actor.start() pro paralelní Runner instance
-- [ ] Agregace výsledků: mean+-stddev per agent x preset x metrika
+- [ ] `Actor.start()` pro paralelní Runner instance
+- [ ] Agregace výsledků: mean±stddev per agent × preset × metrika
 - [ ] Regression detection vs baseline
 - [ ] Cloud deploy + test
 
-### Fáze 5: Scénáře a dokumentace (den 11-12)
+### Fáze 4: Advanced eval — Promptfoo + custom metriky
+**Scope:** Integrace eval frameworku, rozšířené metriky.
+**Prerekvizita:** Hlubší research promptfoo vs alternativy.
+
+- [ ] Promptfoo (nebo alternativa) integrace pro trajectory eval
+- [ ] Custom metriky v YAML frontmatter scénáře
+- [ ] Custom JS/TS scorer funkce (file upload)
+- [ ] Tool call tracking a trajectory assertions
+- [ ] Cache hit rate metriky
+
+### Fáze 5: Scénáře, dokumentace, CI/CD
 - [ ] Vzorové scénáře: GitHub issue lookup, Apify Actor creation, MCP tool call
-- [ ] Init script presets: mcp_native, cli_native, mcpc, mcp_cli_x
-- [ ] README pro Apify Store
+- [ ] README pro Apify Store (oba Actory)
 - [ ] CI/CD (GitHub Actions: lint + test + deploy)
-- [ ] E2E test na Apify Cloud
+- [ ] E2E testy na Apify Cloud
 
 ---
 
 ## 7. Otevřené otázky
 
 - [ ] Jaký org name na Apify Store? (`agentify/agent-evals-runner`?)
-- [ ] Máme přístup k Codex CLI API klíči pro spiky?
-- [ ] AI SDK agent — jak přesně se spouští? (Vercel AI SDK je library, ne CLI)
-- [ ] Chceme standby mode? (Pro API-like přístup k eval runner)
+- [ ] Máme přístup k Codex CLI API klíči pro Fázi 2?
 - [ ] Budget: kolik Apify platform credits máme pro development a testing?
-- [ ] Přístup k GitHub repo pro agentify org?
+- [ ] Přístup k GitHub repo pro cílový org?
+- [ ] Chceme standby mode? (Pro API-like přístup k eval runner — Fáze 5?)
+- [ ] Jak řešit auth pro Claude Code v Dockerfile? (`ANTHROPIC_API_KEY` env var vs `claude setup-token`)
+
+---
+
+## 8. Poučení z researche
+
+### Z gbrain-evals
+- Adapter interface pro pluggable system-under-test -> naše Agent CLI adaptery
+- LLM judge s tool_use pro structured verdicts -> náš custom judge
+- Tiered runs (N=1 smoke, N=5 full) -> jednoduché opakování v Orchestratoru
+- Flight recorder (artifact bundle) -> JSONL log + structured results
+
+### Z meta-engine benchmark
+- `claude -p --output-format stream-json` jako subprocess -> hlavní execution pattern
+- `--strict-mcp-config` pro izolaci MCP -> klíčové pro MCP vs CLI benchmarking
+- Authoritative metrics z CLI result event -> token counting
+- Bash orchestrator s PARALLEL=N -> inspirace pro Orchestrator
+
+### Z AXI
+- 4 core metriky: success, cost, duration, turns -> naše baseline metriky
+- MCP schema inflation je měřitelný problém (12x cost rozdíl) -> motivace pro projekt
+- TOON format pro token úsporu -> zajímavé pro budoucí optimalizaci
+
+### Z mcp-eval.ai
+- LLM-as-judge s Expect API -> inspirace pro assertion types
+- CI/CD regression detection -> Fáze 3 (Orchestrator)
+
+### Z ai-sandbox monorepa
+- Dockerfile pattern pro CLI instalaci (curl install scripts) -> převezmeme
+- Health probe s inicializačním stavem -> převezmeme
+- Build-time version capture -> převezmeme
+- `exec()` je buffered (1MB limit) -> proto standalone, ne metamorph
+- Žádné npm workspaces -> my potřebujeme workspaces pro shared kód
+
+### Z promptfoo
+- Built-in agent trajectory eval (tool-used, tool-sequence, goal-success) -> Fáze 4
+- Programmatic `evaluate()` API -> použitelné jako library v našem Actoru
+- Custom JavaScript assertion functions -> naše custom metriky
