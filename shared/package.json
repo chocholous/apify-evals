@@ -1,0 +1,23 @@
+{
+    "name": "@apify-evals/shared",
+    "version": "0.0.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js",
+        "./*": "./dist/*.js"
+    },
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "gray-matter": "^4.0.3"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.0",
+        "vitest": "^4.1.0",
+        "@types/node": "^24.0.0"
+    }
+}

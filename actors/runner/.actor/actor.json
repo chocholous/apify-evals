@@ -1,0 +1,20 @@
+{
+    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+    "actorSpecification": 1,
+    "name": "agent-evals-runner",
+    "title": "Agent Evals Runner",
+    "description": "Runs a single eval scenario with a single AI agent (Claude Code, Codex, OpenCode) and returns structured results with pass/fail verdicts per checkpoint.",
+    "version": "0.1",
+    "buildTag": "latest",
+    "categories": ["DEVELOPER_TOOLS"],
+    "meta": {
+        "templateId": "ts_empty",
+        "generatedBy": "Claude Code with Claude Opus 4.6"
+    },
+    "dockerfile": "../../Dockerfile.runner",
+    "dockerContextDir": "../..",
+    "defaultMemoryMbytes": 4096,
+    "minMemoryMbytes": 2048,
+    "maxMemoryMbytes": 8192,
+    "usesStandbyMode": false
+}
