@@ -1,0 +1,90 @@
+{
+    "title": "Agent Evals Runner Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "agent": {
+            "title": "Agent",
+            "type": "string",
+            "description": "AI agent CLI to use for the eval run.",
+            "enum": ["claude-code"],
+            "enumTitles": ["Claude Code"],
+            "default": "claude-code"
+        },
+        "model": {
+            "title": "Model",
+            "type": "string",
+            "description": "Specific LLM model to use. If empty, the agent uses its default model.",
+            "editor": "textfield",
+            "nullable": true
+        },
+        "scenario": {
+            "title": "Testing Scenario",
+            "type": "string",
+            "description": "Markdown file with test scenario (YAML frontmatter + ## Test / ## Checkpoint / ## Monitor sections separated by ---).",
+            "editor": "textarea"
+        },
+        "systemPrompt": {
+            "title": "System Prompt",
+            "type": "string",
+            "description": "Instructions sent to the agent at the start of each test. Used to configure agent behavior.",
+            "editor": "textarea",
+            "nullable": true
+        },
+        "maxBudgetUsd": {
+            "title": "Max Budget (USD)",
+            "type": "number",
+            "description": "Maximum spend in USD for the entire run. If exceeded, the run is aborted. Uses claude --max-budget-usd.",
+            "nullable": true,
+            "minimum": 0.01,
+            "maximum": 100
+        },
+        "maxRetries": {
+            "title": "Max Retries on Failure",
+            "type": "integer",
+            "description": "If a checkpoint fails, retry the test this many times before marking as failed. 0 = no retries.",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 5
+        },
+        "maxTurns": {
+            "title": "Max Turns per Test",
+            "type": "integer",
+            "description": "Maximum number of agent turns per test step. Limits agent runtime.",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+        },
+        "envVariables": {
+            "title": "Environment Variables",
+            "type": "object",
+            "description": "JSON object with API keys and secrets. Available to the agent and init script. Automatically masked in conversation logs.",
+            "editor": "json",
+            "isSecret": true,
+            "nullable": true
+        },
+        "initPreset": {
+            "title": "Init Script Preset",
+            "type": "string",
+            "description": "Pre-defined environment setup. Applied before custom init script.",
+            "enum": ["none", "mcp_native", "cli_native", "mcpc"],
+            "enumTitles": ["None", "MCP Native (config.json)", "CLI Native (gh, apify-cli)", "mcpc (MCP+CLI via mcpc)"],
+            "default": "none"
+        },
+        "initBashScript": {
+            "title": "Custom Init Script",
+            "type": "string",
+            "description": "Bash script to set up the environment (install tools, configure MCP, etc.). Runs after the preset.",
+            "editor": "textarea",
+            "nullable": true
+        },
+        "mcpConfigJson": {
+            "title": "MCP Config JSON",
+            "type": "object",
+            "description": "MCP server configuration (passed to claude --mcp-config). Only used with mcp_native or mcpc presets.",
+            "editor": "json",
+            "nullable": true
+        }
+    },
+    "required": ["scenario"]
+}
