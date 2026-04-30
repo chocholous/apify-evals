@@ -1,0 +1,199 @@
+# Agent Evals — Rozhodnutí a zdůvodnění
+
+Tento dokument zachycuje všechna architektonická rozhodnutí, včetně zamítnutých alternativ a důvodů.
+
+---
+
+## D1: Standalone Dockerfile vs. Metamorph do ai-sandbox
+
+### Rozhodnutí: Standalone Dockerfile
+
+### Zamítnuto: Metamorph do `apify/ai-sandbox`
+
+Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence a předinstalovaných CLI.
+
+**Důvody pro zamítnutí:**
+
+| Kritérium | Metamorph | Standalone | Vítěz |
+|-----------|-----------|------------|-------|
+| Subprocess control | `exec()` buffered, 1MB limit, žádné streaming | `spawn()` streaming NDJSON, pty support | Standalone |
+| Error handling | Po metamorphu žádný catch — run prostě failne | try/catch, retry, graceful degradation | Standalone |
+| Codex CLI | Není předinstalovaný (initShellScript workaround, 5min timeout) | V Dockerfile od začátku | Standalone |
+| Cold start | Stop + start + install + initScript = 30-90s | Jeden start = 15-30s | Standalone |
+| Version pinning | Závisí na ai-sandbox releasu | Plná kontrola v Dockerfile | Standalone |
+| Eval orchestrace | Logika přes REST API (nepohodlné) | Přirozený control flow | Standalone |
+| Token counting | Buffered exec nedává streaming metrics | Streaming NDJSON z CLI | Standalone |
+| Maintenance | Apify udržuje sandbox (nižší zátěž) | Vlastní Dockerfile (vyšší zátěž) | Metamorph |
+| Debugging | Zabudovaný ttyd shell | Musíme řešit sami | Metamorph |
+
+**Skóre:** 8:2 pro standalone.
+
+**Co z ai-sandbox převezmeme:**
+- Dockerfile patterny pro CLI instalaci (`curl -fsSL https://claude.ai/install.sh | bash`)
+- Health probe s inicializačním stavem (`initializationComplete` flag)
+- Build-time version capture pro rychlý shell startup
+- Activity-based idle timeout pattern
+
+---
+
+## D2: TypeScript vs. JavaScript vs. Python
+
+### Rozhodnutí: TypeScript (`ts-empty` template)
+
+### Zamítnuto: JavaScript, Python
+
+**Důvody:**
+
+| Kritérium | TypeScript | JavaScript | Python |
+|-----------|-----------|------------|--------|
+| Type safety pro eval schémata | 14+ interfaces (gbrain-evals vzor) | Žádná compile-time kontrola | Type hints, runtime-only |
+| Apify SDK | Primární, Node-first | Stejný SDK | Sekundární, tenčí docs |
+| LLM-as-judge | `@anthropic-ai/sdk` + tool_use (ověřeno gbrain-evals) | Stejné | Funguje, méně příkladů |
+| Subprocess streaming | `spawn()` + `readline` — nativní | Stejné | `asyncio.subprocess` — edge cases |
+| YAML parsing | `gray-matter` — battle-tested (6K stars) | Stejné | `python-frontmatter` — menší komunita |
+| Reference projekty | gbrain-evals (TS), ai-sandbox (TS) | meta-engine (bash+Python mix) | — |
+
+**Klíčový argument:** Eval systém má komplexní datové struktury (scenario frontmatter, subprocess events, judge evidence, result records). Type safety zabraňuje runtime chybám po 30 minutách běhu agenta.
+
+**Závislosti (minimální):**
+- `apify` — SDK (included v template)
+- `gray-matter` — YAML frontmatter parsing
+- `@anthropic-ai/sdk` — LLM-as-judge
+- Vše ostatní built-in Node.js: `child_process.spawn`, `readline`, `AbortController`
+
+---
+
+## D3: Monorepo vs. Separate repos
+
+### Rozhodnutí: Monorepo s npm workspaces
+
+### Zamítnuto: Samostatné repozitáře
+
+**Důvody:**
+- Runner a Orchestrator sdílejí scenario parser, metriky, typy, agent adaptery
+- Atomické změny: nová metrika = 1 PR (runner + orchestrator + shared)
+- Apify oficiálně podporuje monorepo (`dockerContextDir` + `ACTOR_PATH_IN_DOCKER_CONTEXT`)
+- ai-sandbox repo je monorepo se 4 actory (ověřený pattern)
+- Deploy zůstává nezávislý: `apify push --dir actors/runner`
+
+**Kdy by separate repos byly lepší:** Různé týmy, žádný sdílený kód, nezávislé release cadence — nic z toho neplatí.
+
+---
+
+## D4: AI SDK agent — vyřazen z MVP
+
+### Rozhodnutí: Jen Claude Code, Codex, OpenCode
+
+### Zamítnuto: AI SDK (Vercel)
+
+**Důvod:** AI SDK je TypeScript knihovna, ne CLI nástroj. Nemá non-interactive CLI mode jako ostatní agenty. Integrace by vyžadovala programmatic wrapper (spawn Node.js skriptu), což je zásadně odlišný pattern od CLI adaptérů.
+
+**Výhled:** Může být přidán v pozdější fázi jako speciální adapter type.
+
+---
+
+## D5: MVP scope — Runner first
+
+### Rozhodnutí: Fáze 1 = jen Runner + Claude Code
+
+### Zamítnuto: Všechny agenty od začátku, Orchestrator od začátku
+
+**Důvody:**
+- Většina user stories (US1, US5, US6, US7) se týká jen Runneru
+- Runner musí být spolehlivý než ho Orchestrator začne volat
+- Claude Code má nejlepší CLI support (`--output-format stream-json`, `--strict-mcp-config`)
+- Codex a OpenCode přidáme ve Fázi 2 — jen nové adapter soubory
+- Orchestrator ve Fázi 3 — využije ověřený Runner
+
+---
+
+## D6: Structured logs vs. OpenTelemetry
+
+### Rozhodnutí: Structured JSON logs
+
+### Zamítnuto: OpenTelemetry
+
+**Důvody:**
+- OTel SDK přidává značnou složitost (spans, exporters, collectors)
+- Pro MVP stačí structured JSON events z CLI streaming output
+- Dual storage: JSONL do KV store (debugging) + structured JSON do datasetu (reporting)
+- Kompatibilní s pozdějším OTel: structured logs se dají transformovat na spans
+
+**Výhled:** Pokud se ukáže potřeba, OTel se dá přidat v pozdější fázi nad structured logs.
+
+---
+
+## D7: Eval framework — custom judge pro MVP
+
+### Rozhodnutí: Custom LLM judge (@anthropic-ai/sdk tool_use) pro MVP, promptfoo ve Fázi 4
+
+### Zamítnuto: DeepEvals (Python), promptfoo od začátku
+
+**Důvody pro custom judge MVP:**
+- Minimální závislosti (jen @anthropic-ai/sdk)
+- Ověřený pattern (gbrain-evals)
+- Plná kontrola nad judge prompt a structured output
+
+**Proč ne DeepEvals:**
+- Python framework, náš Actor je TypeScript
+- Vyžadovalo by Python subprocess nebo samostatný Actor
+
+**Proč promptfoo až Fáze 4:**
+- Přidává dependency a abstrakční vrstvu
+- Pro MVP stačí jednoduchý judge
+- Promptfoo má built-in agent trajectory eval — cenné, ale ne pro MVP
+- Vyžaduje hlubší research (library API vs CLI, integrace s naším Runner loop)
+
+**TS alternativy k DeepEvals (research):**
+
+| Framework | Stars | Agent eval | Tool call eval | Licence |
+|-----------|-------|-----------|---------------|---------|
+| **Promptfoo** | 20,700 | Ano (trajectory) | Ano (tool-used, tool-sequence, goal-success) | MIT |
+| **Autoevals** (Braintrust) | 876 | Ne | Ne | MIT |
+| **Evalite** | 1,500 | Ne | Ne | Proprietary |
+| **Custom Judge** | N/A | DIY | DIY | — |
+
+---
+
+## D8: Init scripts — presets + custom
+
+### Rozhodnutí: Dropdown s předdefinovanými presets + textarea pro custom script
+
+### Zamítnuté alternativy:
+- **Jen hardcoded presets:** Příliš rigidní, uživatelé potřebují flexibilitu
+- **Jen custom script:** Špatný UX pro začátečníky
+- **Preset v Markdown scénáři:** Scénář by nebyl portabilní mezi různými prostředími
+
+---
+
+## D9: Scénáře — input schema file upload
+
+### Rozhodnutí: File upload přes Apify Console input schema
+
+### Zamítnuté alternativy:
+- **Git repo URL + path:** Lepší verzovatelnost, ale složitější UX pro quick testy
+- **Obojí:** Zbytečná komplexita pro MVP — file upload stačí
+
+**Výhled:** Git repo source může být přidán v Orchestratoru (Fáze 3) pro CI/CD pipeline.
+
+---
+
+## D10: Run repetitions — jednoduché N
+
+### Rozhodnutí: Orchestrator přijme počet opakování jako číslo
+
+### Zamítnuto: Tier systém (smoke/full/published)
+
+**Důvod:** Zbytečná abstrakce. Uživatel si nastaví N=1 pro smoke, N=5 pro full, N=10 pro published sám. Tier systém přidává koncepty bez hodnoty.
+
+---
+
+## D11: Custom metriky — 3 úrovně postupně
+
+### Rozhodnutí: Postupná expanze
+
+1. **Fáze 1:** Předdefinované typy (contains, regex, json-schema, llm-judge)
+2. **Fáze 2:** Custom metriky v YAML frontmatter scénáře
+3. **Fáze 4:** Custom JS/TS scorer funkce jako soubor
+
+### Důvod: Inkrementální složitost. Předdefinované typy pokryjí 80% use cases. Custom YAML pokryje dalších 15%. JS/TS funkce pro edge cases.
