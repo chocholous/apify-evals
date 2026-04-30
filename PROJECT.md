@@ -8,3 +8,4 @@ Project documentation is split into focused files:
 | [docs/01-plan.md](docs/01-plan.md) | Clean implementation plan (goals, user stories, tech stack, phases) |
 | [docs/02-decisions.md](docs/02-decisions.md) | All architectural decisions with rejected alternatives and reasoning |
 | [docs/03-research.md](docs/03-research.md) | Deep research results that shaped the plan |
+| [docs/04-implementation-log.md](docs/04-implementation-log.md) | Co jsme udělali, jak ověřili, US tracker |
