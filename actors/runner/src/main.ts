@@ -45,12 +45,12 @@ for (let i = 0; i < tests.length; i++) {
     while (attempt <= maxRetries) {
         if (attempt > 0) log.info(`  Retry ${attempt}/${maxRetries}`);
 
-        const prompt = input.systemPrompt
-            ? `${input.systemPrompt}\n\n---\n\n${test.test}`
-            : test.test;
+        const defaultSystemPrompt = 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
+        const systemPrompt = input.systemPrompt ?? defaultSystemPrompt;
 
         const result = await runClaude({
-            prompt,
+            prompt: test.test,
+            systemPrompt,
             model: input.model,
             maxTurns,
             maxBudgetUsd: input.maxBudgetUsd,
