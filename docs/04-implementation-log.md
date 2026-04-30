@@ -98,25 +98,45 @@
 ### Commit
 `8ca8528` F1.3a-d: Runner Actor — full pipeline, US1 complete
 
-### Zjištěné problémy z prvního E2E runu
+### Zjištěné problémy z E2E a stability testů
 
-1. **Agent odpovídá česky** — zdědil globální CLAUDE.md s "Always respond in Czech". Řešení: přidat `--bare` flag aby agent nečetl uživatelskou konfiguraci, nebo vynutit jazyk v system promptu.
+1. **`--bare` flag nefunguje** s `--dangerously-skip-permissions` — vrací `stop_sequence` error s 0 tokeny. Odstraněn, nahrazen default system promptem. **Workaround, ne fix — agent stále dědí uživatelský CLAUDE.md.**
 2. **Default model je Opus ($0.15 za triviální otázku)** — v produkci defaultovat na levnější model nebo vyžadovat explicitní volbu.
 3. **Judge events se nelogují** — conversation log obsahuje jen agent run events. Judge run by měl být logován zvlášť (např. `JUDGE-LOG` v KV store).
-4. **Monitor sekce se neimplementuje** — scénář má `## Monitor`, ale runner ji ignoruje. Potřebujeme buď monitor run (další agent call), nebo extrakci z agent events.
+4. **Monitor sekce se neimplementuje** — scénář má `## Monitor`, ale runner ji ignoruje.
+5. **Judge občas vrátí null** — stability test Run 3: `unclear` s confidence 0, "LLM judge returned no result". Chybí retry logika v judge, nebo fallback když judge subprocess selže.
+6. **Checkpoint design chyby se projeví až v stability testu** — "CPU between 0 and 100" failuje na macOS multi-core (>100%). Stability test je cenný nástroj pro validaci scénářů.
+
+### Co jsme udělali (F1.3e-g) — 2026-04-30
+- E2E test suite (`test/e2e/run-e2e.ts`) — 5 testů, všechny PASS
+- AI stability test (`test/e2e/run-ai-stability.ts`) — 3 runy, 83% pass rate (STABLE)
+- Oprava `--bare` bug → default system prompt
+- 5 testovacích scénářů v `scenarios/`
+
+### Jak jsme ověřili
+- E2E testy 5/5 PASS (cost: $0.53)
+- AI stability 83% pass rate (cost: $0.45)
+- us1-smoke: checkpoint pass, confidence 1.0
+- us1-ai-judge: LLM judge na 2 netriviálních odpovědích, oba pass
+- us5-multi-step: 2 kroky (Jupiter, Mercury), per-test breakdown
+- us6-env-vars: secret v logu false, masked true
+- us7-budget-abort: agent dokončil ale verdict fail
+
+### Commit
+`f32934a` F1.3e-g: E2E tests for all MVP user stories — 5/5 pass
+`cc8d0bc` Add non-deterministic AI stability test
 
 ### Zbývající kroky
 
-| Krok | Co | Ověření | Naplní US | Status |
+| Krok | Co | Ověření | Priorita | Status |
 |------|----|---------|----|--------|
-| F1.3a-d | Input + main loop + judge + output | E2E smoke-test | **US1** | **DONE** |
-| F1.3e | Env var injection + masking E2E test | Scénář se secrets → maskovány v KV | **US6** | TODO — mechanismus implementován, chybí E2E test |
-| F1.3f | Budget abort E2E test | Nízký budget → aborted result | **US7** | TODO — mechanismus implementován, chybí E2E test |
-| F1.3g | Multi-step + abortOnFailure E2E test | 2-step scénář → per-test breakdown | **US5** | TODO — mechanismus implementován, chybí E2E test |
-| F1.3h | `--bare` flag pro izolaci agenta | Agent nečte uživatelský CLAUDE.md | — | TODO |
-| F1.3i | Judge log do KV store | `JUDGE-LOG` key s judge events | — | TODO |
-| F1.3j | Monitor sekce | Implementovat ## Monitor extraction | — | TODO (scope TBD) |
-| F1.3k | Default model konfigurace | Rozumný default model pro eval, ne Opus | — | TODO |
+| F1.3a-d | Input + main loop + judge + output | E2E smoke-test | — | **DONE** |
+| F1.3e-g | E2E testy US5/US6/US7 | 5/5 pass | — | **DONE** |
+| F1.3h | Agent izolace (--bare nefunguje) | Agent nečte CLAUDE.md | HIGH | TODO — `--bare` bug, zatím workaround přes system prompt |
+| F1.3i | Judge retry + error handling | Judge nikdy nevrátí null | HIGH | TODO — stability test odhalil selhání |
+| F1.3j | Judge log do KV store | `JUDGE-LOG` key | MEDIUM | TODO |
+| F1.3k | Default model konfigurace | Ne Opus jako default | MEDIUM | TODO |
+| F1.3l | Monitor sekce | ## Monitor extraction | LOW | TODO (scope TBD) |
 
 ---
 
@@ -124,10 +144,10 @@
 
 | US | Popis | Status | Ověřeno v |
 |----|-------|--------|-----------|
-| US1 | Spustit eval s jedním agentem | **DONE** | F1.3a-d E2E smoke-test |
+| US1 | Spustit eval s jedním agentem | **DONE** | E2E 5/5, AI stability 83% |
 | US2 | Porovnat MCP vs CLI | Čeká na F3 | — |
 | US3 | Multi-agent test | Čeká na F2+F3 | — |
 | US4 | Regression detection | Čeká na F3 | — |
-| US5 | Multi-step testy | Mechanismus hotov, chybí E2E test | — |
-| US6 | Bezpečné env vars | Mechanismus hotov, chybí E2E test | — |
-| US7 | Token budget abort | Mechanismus hotov, chybí E2E test | — |
+| US5 | Multi-step testy | **DONE** | E2E us5-multi-step PASS |
+| US6 | Bezpečné env vars | **DONE** | E2E us6-env-vars PASS |
+| US7 | Token budget abort | **DONE** | E2E us7-budget-abort PASS |
