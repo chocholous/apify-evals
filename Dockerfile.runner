@@ -1,32 +1,37 @@
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT=actors/runner
+
 FROM apify/actor-node:24 AS builder
+
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT
 
 COPY --chown=myuser:myuser package*.json ./
 COPY --chown=myuser:myuser shared/package*.json ./shared/
-COPY --chown=myuser:myuser actors/runner/package*.json ./actors/runner/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
 
 RUN npm install --include=dev --audit=false
 
 COPY --chown=myuser:myuser tsconfig.base.json ./
 COPY --chown=myuser:myuser shared/ ./shared/
-COPY --chown=myuser:myuser actors/runner/ ./actors/runner/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/ ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
 
 RUN cd shared && npm run build
-RUN cd actors/runner && npm run build
+RUN cd ${ACTOR_PATH_IN_DOCKER_CONTEXT} && npm run build
 
 # --- Runtime ---
 FROM apify/actor-node:24
+
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT
 
 # Install Claude Code CLI
 USER root
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:$PATH"
-# Capture version at build time
 RUN claude --version > /tmp/.claude-version 2>/dev/null || true
 USER myuser
 
 COPY --chown=myuser:myuser package*.json ./
 COPY --chown=myuser:myuser shared/package*.json ./shared/
-COPY --chown=myuser:myuser actors/runner/package*.json ./actors/runner/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
 
 RUN npm install --omit=dev --omit=optional --audit=false \
     && echo "Installed NPM packages:" \
@@ -34,9 +39,9 @@ RUN npm install --omit=dev --omit=optional --audit=false \
     && rm -r ~/.npm
 
 COPY --from=builder --chown=myuser:myuser /usr/src/app/shared/dist ./shared/dist
-COPY --from=builder --chown=myuser:myuser /usr/src/app/actors/runner/dist ./actors/runner/dist
-COPY --chown=myuser:myuser actors/runner/ ./actors/runner/
+COPY --from=builder --chown=myuser:myuser /usr/src/app/${ACTOR_PATH_IN_DOCKER_CONTEXT}/dist ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/dist
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/ ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
 
-WORKDIR /usr/src/app/actors/runner
+WORKDIR /usr/src/app/${ACTOR_PATH_IN_DOCKER_CONTEXT}
 
 CMD ["node", "dist/main.js"]

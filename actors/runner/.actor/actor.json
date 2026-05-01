@@ -11,8 +11,8 @@
         "templateId": "ts_empty",
         "generatedBy": "Claude Code with Claude Opus 4.6"
     },
-    "dockerfile": "../../Dockerfile.runner",
-    "dockerContextDir": "../..",
+    "dockerfile": "../../../Dockerfile.runner",
+    "dockerContextDir": "../../..",
     "defaultMemoryMbytes": 4096,
     "minMemoryMbytes": 2048,
     "maxMemoryMbytes": 8192,
