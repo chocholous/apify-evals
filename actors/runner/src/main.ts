@@ -1,6 +1,6 @@
 import { Actor, log } from 'apify';
-import { parseScenario, runClaude, judgeCheckpoint, maskSecrets, formatCost, formatDuration } from '@apify-evals/shared';
-import type { AgentResult, Verdict } from '@apify-evals/shared';
+import { parseScenario, runClaude, judgeCheckpoint, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
+import type { AgentResult, Verdict, PresetName } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -31,6 +31,18 @@ const maxTurns = input.maxTurns ?? 10;
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
 
+const preset = (input.initPreset ?? 'none') as PresetName;
+const initResult = runInitPreset({
+    preset,
+    customScript: input.initBashScript,
+    mcpConfigJson: input.mcpConfigJson as Record<string, unknown>,
+    workDir: process.cwd(),
+});
+
+for (const msg of initResult.presetLog) {
+    log.info(`[init] ${msg}`);
+}
+
 const allResults: AgentResult[] = [];
 const allEventLines: string[] = [];
 
@@ -55,6 +67,8 @@ for (let i = 0; i < tests.length; i++) {
             maxTurns,
             maxBudgetUsd: input.maxBudgetUsd,
             env: secrets,
+            mcpConfigPath: initResult.mcpConfigPath ?? undefined,
+            strictMcpConfig: initResult.strictMcpConfig,
         });
 
         lastRunResult = result;
