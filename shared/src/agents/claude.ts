@@ -137,7 +137,14 @@ export interface ClaudeJudgeOptions {
     agentOutput: string;
     checkpoint: string;
     model?: string;
+    maxRetries?: number;
     env?: Record<string, string>;
+}
+
+export interface JudgeLlmResult {
+    verdict: string;
+    evidence: string;
+    confidence: number;
 }
 
 const VERDICT_SCHEMA = JSON.stringify({
@@ -160,7 +167,7 @@ const VERDICT_SCHEMA = JSON.stringify({
     required: ['verdict', 'evidence', 'confidence'],
 });
 
-export function judgeLlm(options: ClaudeJudgeOptions): Promise<{ verdict: string; evidence: string; confidence: number } | null> {
+function judgeLlmOnce(options: ClaudeJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
     return new Promise((resolve) => {
         const prompt = `You are an evaluation judge. Determine whether the agent's output satisfies the checkpoint criteria.
 
@@ -185,19 +192,41 @@ Evaluate carefully and return your verdict.`;
         });
 
         let stdout = '';
-        child.stdout!.on('data', (data) => { stdout += data.toString(); });
+        let stderr = '';
+        child.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
+        child.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
 
-        child.on('close', () => {
+        child.on('close', (code) => {
             try {
-                const result = JSON.parse(stdout);
-                if (result.structured_output) {
-                    resolve(result.structured_output);
+                const parsed = JSON.parse(stdout);
+                if (parsed.structured_output) {
+                    resolve({ result: parsed.structured_output, error: null });
                 } else {
-                    resolve(null);
+                    resolve({ result: null, error: `No structured_output (code=${code}, errors=${parsed.errors?.join(', ') ?? 'none'})` });
                 }
             } catch {
-                resolve(null);
+                resolve({ result: null, error: `JSON parse failed (code=${code}, stderr=${stderr.slice(0, 200)})` });
             }
         });
+
+        child.on('error', (err) => {
+            resolve({ result: null, error: `spawn error: ${err.message}` });
+        });
     });
+}
+
+export async function judgeLlm(options: ClaudeJudgeOptions): Promise<JudgeLlmResult | null> {
+    const maxRetries = options.maxRetries ?? 2;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const { result, error } = await judgeLlmOnce(options);
+        if (result) return result;
+
+        if (attempt < maxRetries) {
+            const delay = 1000 * (attempt + 1);
+            await new Promise((r) => setTimeout(r, delay));
+        }
+    }
+
+    return null;
 }

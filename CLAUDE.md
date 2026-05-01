@@ -51,6 +51,19 @@ Judge přes `claude -p --json-schema` (ne Anthropic SDK):
 - Vyžaduje `--max-turns 3` (interní tool call pro json-schema)
 - Structured output v `result.structured_output` field
 - Žádný API klíč potřeba (OAuth/subscription stačí)
+- Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
+
+## Budget (--max-budget-usd)
+
+DŮLEŽITÉ: `--max-budget-usd` je **soft limit**. Claude CLI kontroluje budget mezi turny, ne uprostřed generování. Pokud agent v prvním turnu vygeneruje odpověď za $0.06 s limitem $0.01, CLI to zjistí až po dokončení turnu. Reálný cost může být vyšší než limit.
+
+## Init presets
+
+Presets nastavují prostředí před agent runem:
+- `mcp_native` — zapíše MCP config JSON do `.eval-config/mcp-config.json`, předá `--mcp-config` + `--strict-mcp-config`
+- `cli_native` — ověří dostupnost CLI nástrojů (gh, apify-cli)
+- `mcpc` — nainstaluje mcpc, volitelně zapíše MCP config
+- Custom script běží PO presetu (bash, timeout 5 min)
 
 ## Monorepo deploy
 
