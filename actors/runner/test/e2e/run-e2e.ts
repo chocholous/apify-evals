@@ -178,6 +178,156 @@ const tests: TestDef[] = [
             };
         },
     },
+    // --- Deep tests ---
+    {
+        name: 'us1-complex-tool-use',
+        scenarioFile: 'us1-complex-tool-use.md',
+        input: {
+            scenario: readScenario('us1-complex-tool-use.md'),
+            maxTurns: 10,
+            maxBudgetUsd: 1.00,
+        },
+        checks: (results) => {
+            if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
+            const verdicts = results.map((r: any) => `${r.verdict?.verdict}(${r.verdict?.confidence})`);
+            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            return { pass: allPass, details: `Multi-tool task: ${verdicts.join(', ')}` };
+        },
+    },
+    {
+        name: 'us1-agent-fails',
+        scenarioFile: 'us1-agent-fails.md',
+        input: {
+            scenario: readScenario('us1-agent-fails.md'),
+            maxTurns: 5,
+            maxBudgetUsd: 0.50,
+        },
+        checks: (results) => {
+            if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
+            const v = (results[0] as any).verdict?.verdict;
+            return {
+                pass: v === 'fail',
+                details: `Expected judge to detect failure. Verdict: ${v} (should be 'fail')`,
+            };
+        },
+    },
+    {
+        name: 'us1-partial-answer',
+        scenarioFile: 'us1-partial-answer.md',
+        input: {
+            scenario: readScenario('us1-partial-answer.md'),
+            maxTurns: 5,
+            maxBudgetUsd: 1.00,
+        },
+        checks: (results) => {
+            if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
+            const details = results.map((r: any, i: number) =>
+                `Test ${i}: ${r.verdict?.verdict}(${r.verdict?.confidence}) — "${(r.verdict?.evidence ?? '').slice(0, 80)}"`
+            );
+            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            return { pass: allPass, details: details.join(' | ') };
+        },
+    },
+    {
+        name: 'us1-borderline-judge',
+        scenarioFile: 'us1-borderline-judge.md',
+        input: {
+            scenario: readScenario('us1-borderline-judge.md'),
+            maxTurns: 3,
+            maxBudgetUsd: 1.00,
+        },
+        checks: (results) => {
+            if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
+            const details = results.map((r: any, i: number) =>
+                `Test ${i}: ${r.verdict?.verdict}(${r.verdict?.confidence})`
+            );
+            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            return {
+                pass: allPass,
+                details: `Borderline judge: ${details.join(', ')} (non-deterministic — nuanced checkpoints)`,
+            };
+        },
+    },
+    {
+        name: 'us5-abort-on-failure',
+        scenarioFile: 'us5-abort-on-failure.md',
+        input: {
+            scenario: readScenario('us5-abort-on-failure.md'),
+            maxTurns: 5,
+            maxBudgetUsd: 0.50,
+        },
+        checks: (results) => {
+            if (results.length !== 1) return {
+                pass: false,
+                details: `Expected 1 result (step 2 should NOT run), got ${results.length}`,
+            };
+            const v = (results[0] as any).verdict?.verdict;
+            return {
+                pass: v === 'fail',
+                details: `Step 1 failed (${v}), step 2 was correctly skipped (only 1 result in dataset)`,
+            };
+        },
+    },
+    {
+        name: 'us5-dependent-steps',
+        scenarioFile: 'us5-dependent-steps.md',
+        input: {
+            scenario: readScenario('us5-dependent-steps.md'),
+            maxTurns: 10,
+            maxBudgetUsd: 2.00,
+        },
+        checks: (results) => {
+            if (results.length !== 3) return { pass: false, details: `Expected 3 results, got ${results.length}` };
+            const verdicts = results.map((r: any) => r.verdict?.verdict);
+            const allPass = verdicts.every((v: string) => v === 'pass');
+            return {
+                pass: allPass,
+                details: `3-step dependent chain: ${verdicts.join(', ')} (each step uses output from previous)`,
+            };
+        },
+    },
+    {
+        name: 'us6-multi-secret',
+        scenarioFile: 'us6-multi-secret.md',
+        input: {
+            scenario: readScenario('us6-multi-secret.md'),
+            maxTurns: 5,
+            maxBudgetUsd: 0.50,
+            envVariables: {
+                SECRET_TOKEN_A: 'eval-token-alpha-99',
+                SECRET_KEY_B: 'eval-key-beta-77',
+            },
+        },
+        checks: (results, kvFiles) => {
+            const logContent = readKvValue('CONVERSATION-LOG');
+            const leakA = logContent.includes('eval-token-alpha-99');
+            const leakB = logContent.includes('eval-key-beta-77');
+            const maskedA = logContent.includes('***SECRET_TOKEN_A***');
+            const maskedB = logContent.includes('***SECRET_KEY_B***');
+
+            return {
+                pass: !leakA && !leakB,
+                details: `LeakA: ${leakA}, LeakB: ${leakB}, MaskedA: ${maskedA}, MaskedB: ${maskedB} (secrets in tool args + error messages)`,
+            };
+        },
+    },
+    {
+        name: 'us7-actual-abort',
+        scenarioFile: 'us7-actual-abort.md',
+        input: {
+            scenario: readScenario('us7-actual-abort.md'),
+            maxTurns: 30,
+            maxBudgetUsd: 0.01,
+        },
+        checks: (results) => {
+            if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
+            const r = results[0] as any;
+            return {
+                pass: r.aborted === true || r.error != null,
+                details: `Aborted: ${r.aborted}, Error: ${r.error}, Cost: $${r.metrics?.totalCostUsd}`,
+            };
+        },
+    },
 ];
 
 // --- Runner ---
