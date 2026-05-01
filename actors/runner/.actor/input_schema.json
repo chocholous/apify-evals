@@ -14,8 +14,9 @@
         "model": {
             "title": "Model",
             "type": "string",
-            "description": "Specific LLM model to use. If empty, the agent uses its default model.",
+            "description": "LLM model for the agent. Default: claude-sonnet-4-6 (cost-effective for evals). Use claude-opus-4-6 for complex tasks.",
             "editor": "textfield",
+            "default": "claude-sonnet-4-6",
             "nullable": true
         },
         "scenario": {

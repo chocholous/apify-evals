@@ -1,6 +1,6 @@
 import { Actor, log } from 'apify';
 import { parseScenario, runClaude, judgeCheckpoint, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, Verdict, PresetName } from '@apify-evals/shared';
+import type { AgentResult, Verdict, PresetName, ClaudeRunResult } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -45,13 +45,15 @@ for (const msg of initResult.presetLog) {
 
 const allResults: AgentResult[] = [];
 const allEventLines: string[] = [];
+const allJudgeLines: string[] = [];
 
 for (let i = 0; i < tests.length; i++) {
     const test = tests[i];
     log.info(`--- Test ${i + 1}/${tests.length}: "${test.test.slice(0, 80)}" ---`);
 
     let verdict: Verdict = { verdict: 'fail', evidence: 'Not executed', confidence: 0 };
-    let lastRunResult: Awaited<ReturnType<typeof runClaude>> | null = null;
+    let lastRunResult: ClaudeRunResult | null = null;
+    let monitorOutput: string | null = null;
     let attempt = 0;
 
     while (attempt <= maxRetries) {
@@ -91,8 +93,31 @@ for (let i = 0; i < tests.length; i++) {
 
         log.info(`  Agent responded (${result.metrics.numTurns} turns, ${formatCost(result.metrics.totalCostUsd)}, ${formatDuration(result.metrics.durationMs)})`);
 
+        // Monitor extraction
+        if (test.monitor) {
+            const monitorResult = await runClaude({
+                prompt: test.monitor,
+                systemPrompt: `You were just asked to do a task. Here is what you produced:\n\n${result.text}\n\nNow answer the following monitoring question based on your work above.`,
+                model: input.model,
+                maxTurns: 3,
+                env: secrets,
+            });
+            monitorOutput = monitorResult.text;
+            log.info(`  Monitor: ${monitorOutput.slice(0, 100)}`);
+        }
+
+        // Judge checkpoint
+        const judgeStart = Date.now();
         verdict = await judgeCheckpoint(result.text, test.checkpoint);
-        log.info(`  Verdict: ${verdict.verdict} (confidence: ${verdict.confidence})`);
+        const judgeMs = Date.now() - judgeStart;
+        allJudgeLines.push(JSON.stringify({
+            testIndex: i,
+            checkpoint: test.checkpoint,
+            verdict,
+            durationMs: judgeMs,
+            timestamp: new Date().toISOString(),
+        }));
+        log.info(`  Verdict: ${verdict.verdict} (confidence: ${verdict.confidence}, judge: ${judgeMs}ms)`);
 
         if (verdict.verdict === 'pass') break;
         attempt++;
@@ -123,8 +148,12 @@ for (let i = 0; i < tests.length; i++) {
     }
 }
 
-const maskedLog = maskSecrets(allEventLines.join('\n'), secrets);
-await Actor.setValue('CONVERSATION-LOG', maskedLog, { contentType: 'text/plain' });
+// Store logs
+const maskedAgentLog = maskSecrets(allEventLines.join('\n'), secrets);
+await Actor.setValue('CONVERSATION-LOG', maskedAgentLog, { contentType: 'text/plain' });
+
+const maskedJudgeLog = maskSecrets(allJudgeLines.join('\n'), secrets);
+await Actor.setValue('JUDGE-LOG', maskedJudgeLog, { contentType: 'text/plain' });
 
 const passed = allResults.filter((r) => r.verdict.verdict === 'pass').length;
 const failed = allResults.filter((r) => r.verdict.verdict === 'fail').length;
