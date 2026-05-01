@@ -113,25 +113,38 @@
 - Oprava `--bare` bug → default system prompt
 - 5 testovacích scénářů v `scenarios/`
 
+### Co jsme udělali (deep E2E) — 2026-05-01
+8 hlubších E2E testů pokrývajících edge cases pro každou US:
+- `us1-complex-tool-use`: multi-tool task (mkdir, write 3 files, cat, concat) — PASS
+- `us1-agent-fails`: judge správně detekuje selhání agenta (neexistující soubor) — PASS
+- `us1-partial-answer`: nuanced eval (5 zemí + math 17×23) — PASS
+- `us1-borderline-judge`: hraniční checkpointy (closure, tomato paradox) — PASS, confidence 0.98-0.99
+- `us5-abort-on-failure`: krok 1 fail → krok 2 přeskočen (1 result v datasetu) — PASS
+- `us5-dependent-steps`: 3-step řetěz (random → reverse → concat) — PASS
+- `us6-multi-secret`: 2 secrets maskované i v tool args + error messages — PASS
+- `us7-actual-abort`: budget $0.01 → error, run zastaveno — PASS
+
 ### Jak jsme ověřili
-- E2E testy 5/5 PASS (cost: $0.53)
+- E2E testy 13/13 PASS (5 original + 8 deep, cost: $1.42)
 - AI stability 83% pass rate (cost: $0.45)
-- us1-smoke: checkpoint pass, confidence 1.0
-- us1-ai-judge: LLM judge na 2 netriviálních odpovědích, oba pass
-- us5-multi-step: 2 kroky (Jupiter, Mercury), per-test breakdown
-- us6-env-vars: secret v logu false, masked true
-- us7-budget-abort: agent dokončil ale verdict fail
+
+### Nová zjištění z deep testů
+- Agent si **pamatuje kontext mezi testy** — krok 2 vidí co udělal krok 1 (sdílená claude session). Feature, ne bug — důležité zdokumentovat.
+- Judge zvládá **nuanced checkpointy** spolehlivě (closure definice, tomato paradox, partial answers)
+- **Dependent multi-step scénáře fungují** — agent úspěšně chain-uje random → reverse → concat
+- Apify **input validace enforces** maxBudgetUsd ≥ 0.01 — nemůžeme testovat sub-cent budgets
+- Secret masking funguje i v **tool call argumentech a error messages** (oba secrets maskované)
 
 ### Commit
 `f32934a` F1.3e-g: E2E tests for all MVP user stories — 5/5 pass
 `cc8d0bc` Add non-deterministic AI stability test
+`cd443ec` Add 8 deep E2E tests for thorough US verification — all pass
 
-### Zbývající kroky
+### Zbývající kroky F1.3
 
 | Krok | Co | Ověření | Priorita | Status |
 |------|----|---------|----|--------|
-| F1.3a-d | Input + main loop + judge + output | E2E smoke-test | — | **DONE** |
-| F1.3e-g | E2E testy US5/US6/US7 | 5/5 pass | — | **DONE** |
+| F1.3a-g | Pipeline + E2E + deep testy | 13/13 E2E, stability 83% | — | **DONE** |
 | F1.3h | Agent izolace (--bare nefunguje) | Agent nečte CLAUDE.md | HIGH | TODO — `--bare` bug, zatím workaround přes system prompt |
 | F1.3i | Judge retry + error handling | Judge nikdy nevrátí null | HIGH | TODO — stability test odhalil selhání |
 | F1.3j | Judge log do KV store | `JUDGE-LOG` key | MEDIUM | TODO |
@@ -140,14 +153,31 @@
 
 ---
 
+## Další kroky — výběr
+
+### Varianta A: Opravit HIGH TODOs (F1.3h, F1.3i)
+Opravit agent izolaci a judge reliability. Zvýší spolehlivost celého pipeline.
+Riziko: `--bare` bug může být v Claude Code CLI — mimo naši kontrolu.
+
+### Varianta B: F1.4 Init script presets
+Přidat mcp_native, cli_native, mcpc presets. Umožní testování MCP vs CLI — klíčový use case projektu (C3).
+
+### Varianta C: F2 Multi-agent (Codex + OpenCode adaptéry)
+Přidat další agenty. Prerekvizita pro multi-agent porovnání (US3).
+
+### Varianta D: Cloud deploy (odložený S2)
+Pushnout Runner Actor na Apify Cloud, ověřit Dockerfile + claude CLI v kontejneru.
+
+---
+
 ## User Stories tracker
 
 | US | Popis | Status | Ověřeno v |
 |----|-------|--------|-----------|
-| US1 | Spustit eval s jedním agentem | **DONE** | E2E 5/5, AI stability 83% |
-| US2 | Porovnat MCP vs CLI | Čeká na F3 | — |
-| US3 | Multi-agent test | Čeká na F2+F3 | — |
+| US1 | Spustit eval s jedním agentem | **DONE** | 13/13 E2E, AI stability 83% |
+| US2 | Porovnat MCP vs CLI | Čeká na F1.4 + F3 | — |
+| US3 | Multi-agent test | Čeká na F2 + F3 | — |
 | US4 | Regression detection | Čeká na F3 | — |
-| US5 | Multi-step testy | **DONE** | E2E us5-multi-step PASS |
-| US6 | Bezpečné env vars | **DONE** | E2E us6-env-vars PASS |
-| US7 | Token budget abort | **DONE** | E2E us7-budget-abort PASS |
+| US5 | Multi-step testy | **DONE** | E2E us5-abort + us5-dependent PASS |
+| US6 | Bezpečné env vars | **DONE** | E2E us6-env-vars + us6-multi-secret PASS |
+| US7 | Token budget abort | **DONE** | E2E us7-budget-abort + us7-actual-abort PASS |
