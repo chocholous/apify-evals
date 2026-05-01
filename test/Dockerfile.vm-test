@@ -1,0 +1,20 @@
+FROM node:24-slim
+
+RUN apt-get update \
+    && apt-get install -y curl git bash python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Make claude binary accessible to all users
+RUN cp /root/.local/bin/claude /usr/local/bin/claude \
+    && chmod 755 /usr/local/bin/claude
+
+# Create test user
+RUN useradd -m -s /bin/bash testuser \
+    && mkdir -p /home/testuser/work \
+    && chown testuser:testuser /home/testuser/work
+
+USER testuser
+WORKDIR /home/testuser/work

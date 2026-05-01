@@ -51,6 +51,7 @@ describe('runInitPreset', () => {
         const result = runInitPreset({ preset: 'mcpc', workDir });
         expect(result.presetLog.length).toBeGreaterThanOrEqual(1);
         expect(result.mcpConfigPath).toBeNull();
+        // mcpc install may fail in clean environments — that's expected and logged
     });
 
     it('mcpc with config writes config', () => {

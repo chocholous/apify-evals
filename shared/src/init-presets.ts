@@ -68,8 +68,8 @@ export function runInitPreset(ctx: InitContext): InitResult {
         }
 
         case 'mcpc': {
-            const script = `which mcpc >/dev/null 2>&1 || npm install -g @apify/mcpc@beta`;
-            const result = runScript(script, ctx.workDir, 'mcpc install');
+            const script = `which mcpc >/dev/null 2>&1 && echo "mcpc already installed" || echo "mcpc not found — install with: npm i -g @apify/mcpc@beta"`;
+            const result = runScript(script, ctx.workDir, 'mcpc check');
             log.push(`mcpc: ${result.output}`);
 
             if (ctx.mcpConfigJson) {
