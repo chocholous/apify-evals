@@ -57,20 +57,41 @@ function readKvValue(key: string): string {
     return readFileSync(resolve(kvDir, file), 'utf-8');
 }
 
+function hasApifyCli(): boolean {
+    try {
+        const { execSync } = require('node:child_process') as typeof import('node:child_process');
+        execSync('npx apify --version', { stdio: 'ignore', timeout: 5000 });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+const USE_APIFY_RUN = hasApifyCli();
+
 function runActor(input: Record<string, unknown>): Promise<{ code: number; output: string }> {
     return new Promise((res) => {
         const inputDir = `${STORAGE_DIR}/key_value_stores/default`;
         mkdirSync(inputDir, { recursive: true });
         writeFileSync(`${inputDir}/INPUT.json`, JSON.stringify(input));
 
-        const child = spawn('npx', ['apify', 'run'], {
-            cwd: RUNNER_DIR,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        let child;
+        if (USE_APIFY_RUN) {
+            child = spawn('npx', ['apify', 'run'], {
+                cwd: RUNNER_DIR,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+        } else {
+            child = spawn('npx', ['tsx', 'src/main.ts'], {
+                cwd: RUNNER_DIR,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: { ...process.env, APIFY_LOCAL_STORAGE_DIR: STORAGE_DIR },
+            });
+        }
 
         let output = '';
-        child.stdout.on('data', (d) => { output += d.toString(); });
-        child.stderr.on('data', (d) => { output += d.toString(); });
+        child.stdout.on('data', (d: Buffer) => { output += d.toString(); });
+        child.stderr.on('data', (d: Buffer) => { output += d.toString(); });
 
         child.on('close', (code) => {
             res({ code: code ?? 1, output });

@@ -1,11 +1,8 @@
 #!/bin/bash
 # Run tests in a clean Linux VM (OrbStack Docker)
-# Usage: ./test/run-vm-test.sh [test-filter]
-#
-# Tests:
-# 1. Unit tests (42) — no claude CLI needed
-# 2. E2E smoke test — needs CLAUDE_CODE_OAUTH_TOKEN
-# 3. Agent isolation check — verifies no CLAUDE.md leakage
+# Usage: ./test/run-vm-test.sh [e2e-filter]
+#   No args = unit tests + full E2E suite + isolation check
+#   filter  = unit tests + filtered E2E + isolation check
 
 set -euo pipefail
 
@@ -51,7 +48,6 @@ $DOCKER run --rm \
         echo \"Node: \$(node --version)\"
         echo \"Claude: \$(claude --version 2>/dev/null || echo 'not found')\"
         echo \"CLAUDE.md exists: \$(test -f ~/.claude/CLAUDE.md && echo YES || echo NO)\"
-        echo \"Home dir CLAUDE.md: \$(test -f ~/CLAUDE.md && echo YES || echo NO)\"
         echo ''
 
         # Install deps
@@ -71,22 +67,16 @@ $DOCKER run --rm \
         cd ../actors/runner && npm run build 2>&1
         cd ../..
 
-        # E2E smoke test (if claude is available and token set)
+        # E2E tests (if claude is available)
         if command -v claude &>/dev/null && [ -n \"\${CLAUDE_CODE_OAUTH_TOKEN:-}\" ]; then
             echo ''
-            echo '--- E2E smoke test (clean VM, no CLAUDE.md) ---'
+            echo '--- E2E tests (clean VM, no CLAUDE.md) ---'
             cd actors/runner
-            # Use tsx directly (apify-cli not installed in VM)
-            mkdir -p storage/key_value_stores/default
-            echo '{\"scenario\":\"---\\nname: vm-smoke\\ndescription: VM smoke test\\nabortOnFailure: true\\n---\\n\\n## Test\\nWhat is 2+2? Answer with just the number.\\n\\n## Checkpoint\\ncontains: 4\\n\",\"maxTurns\":3,\"maxBudgetUsd\":0.50}' > storage/key_value_stores/default/INPUT.json
-            APIFY_LOCAL_STORAGE_DIR=storage npx tsx src/main.ts 2>&1
-            echo 'Dataset output:'
-            cat storage/datasets/default/*.json 2>/dev/null | python3 -m json.tool 2>/dev/null | head -20
+            npx tsx test/e2e/run-e2e.ts $FILTER 2>&1
             cd ../..
 
             echo ''
             echo '--- Agent isolation check ---'
-            echo 'Verifying agent responds in English (no Czech CLAUDE.md)...'
             RESPONSE=\$(claude -p 'Say hello in one word.' --output-format json --max-turns 1 --no-session-persistence --dangerously-skip-permissions < /dev/null 2>/dev/null | python3 -c \"import sys,json; r=json.load(sys.stdin); print(r.get('result',''))\" 2>/dev/null || echo 'FAILED')
             echo \"Agent response: \$RESPONSE\"
             if echo \"\$RESPONSE\" | grep -qi 'ahoj\|dobrý\|zdravím'; then
@@ -96,7 +86,6 @@ $DOCKER run --rm \
                 echo 'PASS: Agent did NOT respond in Czech'
             fi
         else
-            echo ''
             echo 'SKIP: E2E tests (claude CLI not available or no token)'
         fi
 
