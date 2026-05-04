@@ -22,11 +22,13 @@ FROM apify/actor-node:24
 
 ARG ACTOR_PATH_IN_DOCKER_CONTEXT
 
-# Install Claude Code CLI
+# Install Claude Code CLI (apify/actor-node:24 is Alpine-based, needs curl+bash)
 USER root
-RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/root/.local/bin:$PATH"
-RUN claude --version > /tmp/.claude-version 2>/dev/null || true
+RUN apk add --no-cache curl bash \
+    && curl -fsSL https://claude.ai/install.sh | bash \
+    && claude --version > /tmp/.claude-version 2>/dev/null || true \
+    && cp /root/.local/bin/claude /usr/local/bin/claude \
+    && chmod 755 /usr/local/bin/claude
 USER myuser
 
 COPY --chown=myuser:myuser package*.json ./
