@@ -1,0 +1,10 @@
+{
+    "agent": "codex",
+    "scenario": "---\nname: smoke-test\n---\n\n## Test\nWhat is 2+2? Answer with just the number.\n\n## Checkpoint\ncontains: 4\n",
+    "maxTurns": 3,
+    "maxBudgetUsd": 0.50,
+    "initBashScript": "npm install -g @openai/codex && codex --version",
+    "envVariables": {
+        "OPENAI_API_KEY": "sk-..."
+    }
+}
