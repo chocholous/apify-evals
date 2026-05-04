@@ -1,0 +1,11 @@
+{
+    "agent": "claude-code",
+    "scenario": "---\nname: apify-cli-test\n---\n\n## Test\nUse apify CLI to search for Actors related to 'web scraper'. Show the top 3 results.\n\n## Checkpoint\nThe answer should list at least 3 Actors from the Apify Store.\n",
+    "maxTurns": 5,
+    "maxBudgetUsd": 1.00,
+    "initPreset": "cli_native",
+    "initBashScript": "npm install -g apify-cli@1.5.0 && apify --version",
+    "envVariables": {
+        "APIFY_TOKEN": "apify_api_..."
+    }
+}
