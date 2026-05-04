@@ -145,8 +145,12 @@ interface AgentResult {
 
 ### EfficiencyMetrics (Tier 1 — derivované)
 ```typescript
-{ tokensPerTurn, costPerTurn, cacheHitRate, inputOutputRatio, apiDurationRatio, avgTurnDurationMs }
+{ totalContextTokens, tokensPerTurn, costPerTurn, cacheHitRate, contextOutputRatio, apiDurationRatio, avgTurnDurationMs }
 ```
+- `totalContextTokens` = inputTokens + cacheReadTokens + cacheCreationTokens (reálný kontext poslaný modelu)
+- `cacheHitRate` = cacheRead / totalContext (0-1, ne per-turn sum)
+- `contextOutputRatio` = totalContext / output (kolik agent čte vs generuje)
+- `apiDurationRatio` > 1 je normální (Claude CLI sčítá paralelní API calls)
 
 ### TrajectoryMetrics (Tier 1+2 — z event streamu)
 ```typescript

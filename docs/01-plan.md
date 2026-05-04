@@ -44,6 +44,18 @@ Secure input, dostupné v init scriptu, po použití smazané, v logu maskovány
 ### US7: Token budget a abort
 Budget control přes `--max-budget-usd` (nativní) + mezi-turnový SIGTERM jako fallback. Výsledek s `aborted: true`.
 
+### US8: Tool Discoverability Scoring
+Scénář deklaruje expected tools (`expectedTools` ve frontmatter). Runner porovná s trajectory a vrátí discoverability metriky — které tools agent našel/nenašel, extra/forbidden tools, skóre. Měří schopnost agenta objevit správné nástroje.
+
+### US9: Tool Parameter Correctness
+Scénář deklaruje expected tool parametry (`## Expected Tools` sekce). Runner zachytí tool call inputs a vyhodnotí shodu — měří kvalitu dokumentace tools (agent je našel, ale volal správně?).
+
+### US10: Actor Spec Validation
+Agent vytvoří Apify Actor dle specifikace. Checkpoint ověří: soubory existují, input schema odpovídá, Actor se buildí a produkuje output, output matchuje expected strukturu. Měří end-to-end kvalitu vygenerovaného kódu.
+
+### US11: Custom Agent Configuration per Scenario
+Scénář specifikuje `language`, `template`, `actorSpec` ve frontmatter. Runner inject do system promptu a init scriptu. Agent pracuje v kontextu předkonfigurovaného prostředí.
+
 ---
 
 ## Technický stack
@@ -102,10 +114,24 @@ Všechny spiky proběhly úspěšně. Kód v `spikes/`.
 4. **F1.3: Runner Actor** — input/output/dataset schema, Dockerfile, main loop, streaming tracking, env var handling, KV + dataset storage, graceful abort
 5. **F1.4: Init script presets** — mcp_native, cli_native, mcpc + custom textarea
 
-### Fáze 2: Multi-agent — Codex + OpenCode
-**US1 rozšíření**
+### Fáze 2: Multi-agent + Tool Discovery
+**US1 rozšíření, US8, US9**
 
 - Codex CLI adapter, OpenCode adapter, Dockerfile update, agent-specific token counting
+- Opravit token metriky (cacheHitRate, perTurnTokens deduplikace, totalContextTokens)
+- `expectedTools` v scenario frontmatter + discoverability scoring
+- `toolCallDetails` — sbírat tool call inputs (argumenty) do trajectory
+- `## Expected Tools` sekce s parameter hints
+- Graceful abort (`Actor.on('aborting')`)
+
+### Fáze 2.5: Actor Development Evals
+**US10, US11**
+
+- `actorSpec`, `language`, `template` v scenario frontmatter
+- Init script: scaffold Actor z template
+- Script checkpointy pro Actor validation (`apify run` + output check)
+- LLM judge pro fuzzy schema comparison
+- Vzorové scénáře: CheerioCrawler scraper, PlaywrightCrawler, API Actor
 
 ### Fáze 3: Orchestrator Actor
 **US2, US3, US4**
@@ -113,14 +139,18 @@ Všechny spiky proběhly úspěšně. Kód v `spikes/`.
 - Input schema (agents[], scenarios[], presets[], N, baselineDatasetId)
 - `Actor.start()` pro paralelní Runner instance
 - Agregace mean±stddev, regression detection
+- Porovnání discoverability score across agents/presets
 
 ### Fáze 4: Advanced eval
 - Promptfoo (nebo alternativa) integrace — vyžaduje hlubší research
 - Custom metriky v YAML + JS/TS scorer funkce
-- Tool call tracking, trajectory assertions, cache hit rate
+- OTel export (optional, pro vizualizaci v Langfuse/Phoenix)
+- Per-tool-call latency tracking
 
 ### Fáze 5: Scénáře, dokumentace, CI/CD
-- Vzorové scénáře, README pro Store, GitHub Actions, E2E testy
+- Vzorové scénáře (Actor dev, MCP discovery, CLI proficiency)
+- README pro Store, GitHub Actions, E2E testy
+- Benchmark suite: 10+ scénářů pro Actor development across templates
 
 ---
 

@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
 
-import type { ParsedScenario, ScenarioMeta, TestCase } from './types.js';
+import type { ParsedScenario, ScenarioMeta, TestCase, ExpectedTools, ExpectedToolCall } from './types.js';
 
 export class ScenarioParseError extends Error {
     constructor(message: string) {
@@ -16,10 +16,21 @@ export function parseScenario(markdown: string): ParsedScenario {
 
     const { data, content } = matter(markdown);
 
+    let expectedTools: ExpectedTools | undefined;
+    if (data.expectedTools) {
+        const et = data.expectedTools;
+        expectedTools = {
+            required: Array.isArray(et.required) ? et.required : [],
+            forbidden: Array.isArray(et.forbidden) ? et.forbidden : [],
+            optional: Array.isArray(et.optional) ? et.optional : [],
+        };
+    }
+
     const meta: ScenarioMeta = {
         name: data.name ?? 'unnamed',
         description: data.description ?? '',
         abortOnFailure: data.abortOnFailure ?? false,
+        expectedTools,
     };
 
     if (!meta.name || meta.name === 'unnamed') {
@@ -36,8 +47,9 @@ export function parseScenario(markdown: string): ParsedScenario {
 
     for (let idx = 0; idx < rawBlocks.length; idx++) {
         const block = rawBlocks[idx];
-        const testMatch = block.match(/## Test\s*\n([\s\S]*?)(?=## Checkpoint|## Monitor|$)/i);
-        const checkpointMatch = block.match(/## Checkpoint\s*\n([\s\S]*?)(?=## Monitor|$)/i);
+        const testMatch = block.match(/## Test\s*\n([\s\S]*?)(?=## Checkpoint|## Expected Tools|## Monitor|$)/i);
+        const checkpointMatch = block.match(/## Checkpoint\s*\n([\s\S]*?)(?=## Expected Tools|## Monitor|$)/i);
+        const expectedToolsMatch = block.match(/## Expected Tools\s*\n([\s\S]*?)(?=## Checkpoint|## Monitor|$)/i);
         const monitorMatch = block.match(/## Monitor\s*\n([\s\S]*?)$/i);
 
         if (testMatch && checkpointMatch) {
@@ -53,10 +65,22 @@ export function parseScenario(markdown: string): ParsedScenario {
                 continue;
             }
 
+            const expectedToolCalls: ExpectedToolCall[] = [];
+            if (expectedToolsMatch) {
+                const lines = expectedToolsMatch[1].trim().split('\n');
+                for (const line of lines) {
+                    const match = line.match(/^(\w+):\s*(.+)$/);
+                    if (match) {
+                        expectedToolCalls.push({ tool: match[1], parameterHint: match[2].trim() });
+                    }
+                }
+            }
+
             tests.push({
                 test,
                 checkpoint,
                 monitor: monitorMatch ? monitorMatch[1].trim() || null : null,
+                expectedToolCalls,
             });
         } else if (block.includes('## Test') || block.includes('## Checkpoint')) {
             parseErrors.push(`Block ${idx + 1}: has ## Test or ## Checkpoint header but missing the other`);

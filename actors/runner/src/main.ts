@@ -1,6 +1,8 @@
+import { setTimeout } from 'node:timers/promises';
+
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -16,7 +18,46 @@ interface RunnerInput {
     mcpConfigJson?: Record<string, unknown>;
 }
 
+function computeDiscoverability(expected: ExpectedTools | undefined, trajectory: TrajectoryMetrics): DiscoverabilityMetrics | null {
+    if (!expected) return null;
+
+    const actual = trajectory.uniqueToolsUsed;
+    const actualSet = new Set(actual);
+    const allowedSet = new Set([...expected.required, ...expected.optional]);
+
+    const missingTools = expected.required.filter((t) => !actualSet.has(t));
+    const extraTools = actual.filter((t) => !allowedSet.has(t) && !expected.forbidden.includes(t));
+    const forbiddenToolsUsed = expected.forbidden.filter((t) => actualSet.has(t));
+
+    const foundRequired = expected.required.filter((t) => actualSet.has(t));
+    const discoverabilityScore = expected.required.length > 0
+        ? foundRequired.length / expected.required.length
+        : 1.0;
+    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0) ? 1.0 : 0.0;
+
+    return {
+        expectedRequired: expected.required,
+        expectedForbidden: expected.forbidden,
+        expectedOptional: expected.optional,
+        actualTools: actual,
+        missingTools,
+        extraTools,
+        forbiddenToolsUsed,
+        discoverabilityScore,
+        strictScore,
+    };
+}
+
 await Actor.init();
+
+// Graceful abort: kill running agent subprocess when Actor is stopped
+const abortController = new AbortController();
+Actor.on('aborting', async () => {
+    log.warning('Actor aborting — killing agent subprocess');
+    abortController.abort();
+    await setTimeout(1000);
+    await Actor.exit();
+});
 
 const input = await Actor.getInput<RunnerInput>();
 if (!input?.scenario) {
@@ -75,6 +116,7 @@ for (let i = 0; i < tests.length; i++) {
             env: secrets,
             mcpConfigPath: initResult.mcpConfigPath ?? undefined,
             strictMcpConfig: initResult.strictMcpConfig,
+            abortSignal: abortController.signal,
         });
 
         lastRunResult = result;
@@ -142,13 +184,14 @@ for (let i = 0; i < tests.length; i++) {
         totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
     };
     const emptyEfficiency = {
-        tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
-        inputOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
+        totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
+        contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
     };
     const emptyTrajectory = {
         toolCallCount: 0, toolCallSequence: [] as string[], uniqueToolsUsed: [] as string[],
         toolCallsPerTurn: 0, perTurnTokens: [] as Array<{ turn: number; input: number; output: number }>,
         perTurnToolCalls: [] as Array<{ turn: number; tools: string[] }>,
+        toolCallDetails: [] as Array<{ tool: string; turn: number; input: Record<string, unknown> }>,
         errorRecoveryCount: 0, filesCreated: [] as string[], filesModified: [] as string[],
         commandsExecuted: [] as string[], mcpToolsUsed: [] as string[],
     };
@@ -167,6 +210,7 @@ for (let i = 0; i < tests.length; i++) {
         metrics: lastRunResult?.metrics ?? emptyMetrics,
         efficiency: lastRunResult?.efficiency ?? emptyEfficiency,
         trajectory: lastRunResult?.trajectory ?? emptyTrajectory,
+        discoverability: computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? emptyTrajectory),
         stopReason: lastRunResult?.stopReason ?? 'unknown',
         exitCode: lastRunResult?.exitCode ?? null,
         aborted: lastRunResult?.aborted ?? false,

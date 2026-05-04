@@ -1,13 +1,26 @@
+export interface ExpectedTools {
+    required: string[];
+    forbidden: string[];
+    optional: string[];
+}
+
 export interface ScenarioMeta {
     name: string;
     description: string;
     abortOnFailure: boolean;
+    expectedTools?: ExpectedTools;
+}
+
+export interface ExpectedToolCall {
+    tool: string;
+    parameterHint: string;
 }
 
 export interface TestCase {
     test: string;
     checkpoint: string;
     monitor: string | null;
+    expectedToolCalls: ExpectedToolCall[];
 }
 
 export interface ParsedScenario {
@@ -43,12 +56,19 @@ export interface RunMetrics {
 
 // Derived efficiency metrics (Tier 1)
 export interface EfficiencyMetrics {
-    tokensPerTurn: number;
-    costPerTurn: number;
-    cacheHitRate: number;
-    inputOutputRatio: number;
-    apiDurationRatio: number;
-    avgTurnDurationMs: number;
+    totalContextTokens: number;     // input + cacheRead + cacheCreate (real context sent to model)
+    tokensPerTurn: number;          // output / numTurns
+    costPerTurn: number;            // cost / numTurns
+    cacheHitRate: number;           // cacheRead / totalContextTokens (0-1)
+    contextOutputRatio: number;     // totalContext / output (how much reading vs generating)
+    apiDurationRatio: number;       // apiMs / wallMs (can be >1 if parallel calls)
+    avgTurnDurationMs: number;      // wallMs / numTurns
+}
+
+export interface ToolCallDetail {
+    tool: string;
+    turn: number;
+    input: Record<string, unknown>;   // truncated arguments
 }
 
 // Tool/trajectory metrics (Tier 1 + 2)
@@ -60,6 +80,8 @@ export interface TrajectoryMetrics {
     // Tier 2: per-turn breakdown
     perTurnTokens: Array<{ turn: number; input: number; output: number }>;
     perTurnToolCalls: Array<{ turn: number; tools: string[] }>;
+    // Tier 2: detailed tool calls (for parameter correctness)
+    toolCallDetails: ToolCallDetail[];
     // Tier 2: self-correction signals
     errorRecoveryCount: number;
     // Tier 2: side effects
@@ -67,6 +89,18 @@ export interface TrajectoryMetrics {
     filesModified: string[];
     commandsExecuted: string[];
     mcpToolsUsed: string[];
+}
+
+export interface DiscoverabilityMetrics {
+    expectedRequired: string[];
+    expectedForbidden: string[];
+    expectedOptional: string[];
+    actualTools: string[];
+    missingTools: string[];
+    extraTools: string[];
+    forbiddenToolsUsed: string[];
+    discoverabilityScore: number;   // |required ∩ actual| / |required| (0-1)
+    strictScore: number;            // 1.0 if no missing + no forbidden
 }
 
 export interface ModelUsage {
@@ -91,6 +125,7 @@ export interface AgentResult {
     metrics: RunMetrics;
     efficiency: EfficiencyMetrics;
     trajectory: TrajectoryMetrics;
+    discoverability: DiscoverabilityMetrics | null;
     stopReason: string;
     exitCode: number | null;
     aborted: boolean;

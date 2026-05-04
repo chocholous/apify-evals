@@ -137,12 +137,33 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
     }
 }
 
+function extractJson(text: string): string {
+    // Try raw text first
+    try { JSON.parse(text); return text; } catch { /* continue */ }
+
+    // Extract from ```json ... ``` or ``` ... ``` code blocks
+    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (codeBlockMatch) {
+        try { JSON.parse(codeBlockMatch[1].trim()); return codeBlockMatch[1].trim(); } catch { /* continue */ }
+    }
+
+    // Try to find first { or [ and last } or ]
+    const firstBrace = text.search(/[\[{]/);
+    const lastBrace = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const candidate = text.slice(firstBrace, lastBrace + 1);
+        try { JSON.parse(candidate); return candidate; } catch { /* continue */ }
+    }
+
+    return text;
+}
+
 function judgeJsonSchema(agentOutput: string, schemaStr: string): CheckVerdict {
     let data: unknown;
     try {
-        data = JSON.parse(agentOutput);
+        data = JSON.parse(extractJson(agentOutput));
     } catch {
-        return { checkType: 'json-schema', checkValue: schemaStr, verdict: 'fail', evidence: 'Output is not valid JSON', confidence: 1.0 };
+        return { checkType: 'json-schema', checkValue: schemaStr, verdict: 'fail', evidence: 'Output is not valid JSON (even after extracting from code blocks)', confidence: 1.0 };
     }
 
     let schema: Record<string, unknown>;

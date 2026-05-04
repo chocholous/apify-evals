@@ -1,18 +1,14 @@
-ARG ACTOR_PATH_IN_DOCKER_CONTEXT=actors/runner
-
 FROM apify/actor-node:24 AS builder
-
-ARG ACTOR_PATH_IN_DOCKER_CONTEXT
 
 COPY --chown=myuser:myuser package*.json ./
 COPY --chown=myuser:myuser shared/package*.json ./shared/
-COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+COPY --chown=myuser:myuser actors/runner/package*.json ./actors/runner/
 
 RUN npm install --include=dev --audit=false --workspaces
 
 COPY --chown=myuser:myuser tsconfig.base.json ./
 COPY --chown=myuser:myuser shared/ ./shared/
-COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/ ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+COPY --chown=myuser:myuser actors/runner/ ./actors/runner/
 
 RUN ./node_modules/.bin/tsc -p shared/tsconfig.json
 RUN ./node_modules/.bin/tsc -p actors/runner/tsconfig.json
@@ -20,10 +16,14 @@ RUN ./node_modules/.bin/tsc -p actors/runner/tsconfig.json
 # --- Runtime: all agent CLIs pre-installed ---
 FROM apify/actor-node:24
 
-ARG ACTOR_PATH_IN_DOCKER_CONTEXT=actors/runner
-
 USER root
-RUN apk add --no-cache curl bash git
+RUN apk add --no-cache \
+    curl bash git openssh-client \
+    jq yq python3 py3-pip \
+    build-base \
+    wget ca-certificates \
+    zip unzip \
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash \
@@ -46,9 +46,9 @@ USER myuser
 
 COPY --chown=myuser:myuser package*.json ./
 COPY --chown=myuser:myuser shared/package*.json ./shared/
-COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+COPY --chown=myuser:myuser actors/runner/package*.json ./actors/runner/
 
-RUN npm install --omit=dev --omit=optional --audit=false \
+RUN npm install --omit=dev --omit=optional --audit=false --workspaces \
     && echo "Installed NPM packages:" \
     && (npm list --omit=dev --all || true) \
     && rm -r ~/.npm

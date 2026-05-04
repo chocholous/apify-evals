@@ -208,6 +208,20 @@ describe('judgeAllChecks — deterministic', () => {
         expect(r.verdicts[0].confidence).toBe(1.0);
     });
 
+    it('json-schema: extracts JSON from markdown code block', async () => {
+        const schema = JSON.stringify({ type: 'object', required: ['name'] });
+        const output = 'Here is the result:\n\n```json\n{"name": "extracted"}\n```\n\nDone!';
+        const r = await judgeAllChecks(output, `json-schema: ${schema}`);
+        expect(r.overallVerdict).toBe('pass');
+    });
+
+    it('json-schema: extracts JSON from surrounding text', async () => {
+        const schema = JSON.stringify({ type: 'array', minItems: 2 });
+        const output = 'The array is: [1, 2, 3] as you can see.';
+        const r = await judgeAllChecks(output, `json-schema: ${schema}`);
+        expect(r.overallVerdict).toBe('pass');
+    });
+
     it('json-schema: validates against schema — fail', async () => {
         const schema = JSON.stringify({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] });
         const r = await judgeAllChecks('{"age": 30}', `json-schema: ${schema}`);

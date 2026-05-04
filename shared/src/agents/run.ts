@@ -40,13 +40,13 @@ const EMPTY_METRICS: RunMetrics = {
 };
 
 const EMPTY_EFFICIENCY: EfficiencyMetrics = {
-    tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
-    inputOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
+    totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
+    contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
 };
 
 const EMPTY_TRAJECTORY: TrajectoryMetrics = {
     toolCallCount: 0, toolCallSequence: [], uniqueToolsUsed: [], toolCallsPerTurn: 0,
-    perTurnTokens: [], perTurnToolCalls: [],
+    perTurnTokens: [], perTurnToolCalls: [], toolCallDetails: [],
     errorRecoveryCount: 0,
     filesCreated: [], filesModified: [], commandsExecuted: [], mcpToolsUsed: [],
 };
@@ -114,6 +114,7 @@ interface ParsedStream {
     getStopReason: () => string;
     getTrajectoryData: () => {
         toolCalls: string[];
+        toolCallDetails: Array<{ tool: string; turn: number; input: Record<string, unknown> }>;
         perTurnTokens: Array<{ turn: number; input: number; output: number }>;
         perTurnToolCalls: Array<{ turn: number; tools: string[] }>;
         errorRecoveries: number;
@@ -127,28 +128,64 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
     let text = '';
     let resultEvent: AgentEvent | null = null;
     const toolCalls: string[] = [];
+    const toolCallDetails: Array<{ tool: string; turn: number; input: Record<string, unknown> }> = [];
     const perTurnTokens: Array<{ turn: number; input: number; output: number }> = [];
     const perTurnToolCalls: Array<{ turn: number; tools: string[] }> = [];
     const files = { created: [] as string[], modified: [] as string[] };
     const commands: string[] = [];
     const mcpTools: string[] = [];
     let errorRecoveries = 0;
-    let turnNum = 0;
+    let apiCallNum = 0;
     let lastWasError = false;
-    let currentTurnTools: string[] = [];
+    let currentCallTools: string[] = [];
+    // Track usage to detect new API calls (Claude emits multiple assistant events per call with same usage)
+    let prevUsageKey = '';
 
     for (const event of events) {
         if (event.type === 'assistant' && event.message?.content) {
-            turnNum++;
-            currentTurnTools = [];
+            // Detect new API call by comparing usage fingerprint
+            const usage = event.message.usage;
+            const usageKey = usage
+                ? `${usage.input_tokens}:${usage.output_tokens}:${usage.cache_creation_input_tokens ?? 0}:${usage.cache_read_input_tokens ?? 0}`
+                : '';
+            const isNewApiCall = usageKey !== prevUsageKey;
+
+            if (isNewApiCall) {
+                // Save previous API call's tool list
+                if (apiCallNum > 0) {
+                    perTurnToolCalls.push({ turn: apiCallNum, tools: currentCallTools });
+                }
+                apiCallNum++;
+                currentCallTools = [];
+                prevUsageKey = usageKey;
+
+                if (usage) {
+                    perTurnTokens.push({
+                        turn: apiCallNum,
+                        input: usage.input_tokens,
+                        output: usage.output_tokens,
+                    });
+                }
+            }
+
             for (const block of event.message.content) {
                 if (block.type === 'text' && block.text) {
                     text += block.text;
                 }
                 if (block.type === 'tool_use' && 'name' in block) {
                     const name = block.name as string;
+                    const rawInput = block.input as Record<string, unknown> | undefined;
                     toolCalls.push(name);
-                    currentTurnTools.push(name);
+                    currentCallTools.push(name);
+
+                    // Capture tool call details (truncate large values)
+                    const truncatedInput: Record<string, unknown> = {};
+                    if (rawInput) {
+                        for (const [k, v] of Object.entries(rawInput)) {
+                            truncatedInput[k] = typeof v === 'string' ? v.slice(0, 500) : v;
+                        }
+                    }
+                    toolCallDetails.push({ tool: name, turn: apiCallNum, input: truncatedInput });
 
                     if (name.startsWith('mcp__')) mcpTools.push(name);
                     if (name === 'Write') {
@@ -176,14 +213,6 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
                     }
                 }
             }
-            if (event.message.usage) {
-                perTurnTokens.push({
-                    turn: turnNum,
-                    input: event.message.usage.input_tokens,
-                    output: event.message.usage.output_tokens,
-                });
-            }
-            perTurnToolCalls.push({ turn: turnNum, tools: currentTurnTools });
         }
 
         if (event.type === 'user') {
@@ -203,6 +232,11 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
         }
     }
 
+    // Push the last API call's tools
+    if (apiCallNum > 0) {
+        perTurnToolCalls.push({ turn: apiCallNum, tools: currentCallTools });
+    }
+
     return {
         getText: () => text,
         getMetrics: () => ({
@@ -213,7 +247,7 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
             totalCostUsd: resultEvent?.total_cost_usd ?? 0,
             durationMs: resultEvent?.duration_ms ?? 0,
             durationApiMs: resultEvent?.duration_api_ms ?? 0,
-            numTurns: resultEvent?.num_turns ?? turnNum,
+            numTurns: resultEvent?.num_turns ?? apiCallNum,
             modelUsage: resultEvent?.modelUsage ?? {},
         }),
         getError: () => {
@@ -227,7 +261,7 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
             return resultEvent?.stop_reason ?? 'unknown';
         },
         getTrajectoryData: () => ({
-            toolCalls, perTurnTokens, perTurnToolCalls, errorRecoveries,
+            toolCalls, toolCallDetails, perTurnTokens, perTurnToolCalls, errorRecoveries,
             files, commands, mcpTools,
         }),
     };
@@ -243,12 +277,14 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
     const files = { created: [] as string[], modified: [] as string[] };
     const mcpTools: string[] = [];
     let turnNum = 0;
+    let currentTurnTools: string[] = [];
     const perTurnTokens: Array<{ turn: number; input: number; output: number }> = [];
     const perTurnToolCalls: Array<{ turn: number; tools: string[] }> = [];
 
     for (const event of events) {
         if (event.type === 'turn.started') {
             turnNum++;
+            currentTurnTools = [];
         }
 
         if (event.type === 'item.completed' && event.item) {
@@ -257,6 +293,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
             }
             if (event.item.type === 'command_execution') {
                 toolCalls.push('command_execution');
+                currentTurnTools.push('command_execution');
                 if (event.item.command) {
                     commands.push(event.item.command.slice(0, 200));
                     const bashFileOps = extractFileOpsFromCommand(event.item.command);
@@ -266,6 +303,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
             }
             if (event.item.type === 'file_change' && event.item.changes) {
                 toolCalls.push('file_change');
+                currentTurnTools.push('file_change');
                 for (const change of event.item.changes) {
                     if (change.kind === 'add') files.created.push(change.path);
                     else files.modified.push(change.path);
@@ -274,6 +312,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
             if (event.item.type === 'mcp_tool_call') {
                 const toolName = event.item.tool ?? 'mcp_unknown';
                 toolCalls.push(toolName);
+                currentTurnTools.push(toolName);
                 mcpTools.push(toolName);
             }
         }
@@ -288,7 +327,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
                     output: usage.output_tokens ?? 0,
                 });
             }
-            perTurnToolCalls.push({ turn: turnNum, tools: [...toolCalls.slice(-10)] });
+            perTurnToolCalls.push({ turn: turnNum, tools: currentTurnTools });
         }
 
         if (event.type === 'turn.failed') {
@@ -318,7 +357,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
         getError: () => error,
         getStopReason: () => stopReason,
         getTrajectoryData: () => ({
-            toolCalls, perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
+            toolCalls, toolCallDetails: [], perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
             files, commands, mcpTools,
         }),
     };
@@ -418,7 +457,7 @@ function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
         getError: () => error,
         getStopReason: () => stopReason,
         getTrajectoryData: () => ({
-            toolCalls, perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
+            toolCalls, toolCallDetails: [], perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
             files, commands, mcpTools,
         }),
     };
@@ -429,10 +468,15 @@ function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
 function deriveEfficiency(metrics: RunMetrics): EfficiencyMetrics {
     const turns = metrics.numTurns || 1;
     return {
+        totalContextTokens: metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens,
         tokensPerTurn: metrics.outputTokens / turns,
         costPerTurn: metrics.totalCostUsd / turns,
-        cacheHitRate: metrics.inputTokens > 0 ? metrics.cacheReadTokens / metrics.inputTokens : 0,
-        inputOutputRatio: metrics.outputTokens > 0 ? metrics.inputTokens / metrics.outputTokens : 0,
+        cacheHitRate: (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens) > 0
+            ? metrics.cacheReadTokens / (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens)
+            : 0,
+        contextOutputRatio: metrics.outputTokens > 0
+            ? (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens) / metrics.outputTokens
+            : 0,
         apiDurationRatio: metrics.durationMs > 0 ? metrics.durationApiMs / metrics.durationMs : 0,
         avgTurnDurationMs: metrics.durationMs / turns,
     };
@@ -446,6 +490,7 @@ function deriveTrajectory(data: ReturnType<ParsedStream['getTrajectoryData']>, n
         toolCallsPerTurn: numTurns > 0 ? data.toolCalls.length / numTurns : 0,
         perTurnTokens: data.perTurnTokens,
         perTurnToolCalls: data.perTurnToolCalls,
+        toolCallDetails: data.toolCallDetails,
         errorRecoveryCount: data.errorRecoveries,
         filesCreated: data.files.created,
         filesModified: data.files.modified,

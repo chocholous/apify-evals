@@ -1,6 +1,8 @@
 export function maskSecrets(text: string, secrets: Record<string, string>): string {
     let masked = text;
-    for (const [key, value] of Object.entries(secrets)) {
+    // Sort by value length descending — longer secrets first to avoid partial matches
+    const sorted = Object.entries(secrets).sort((a, b) => b[1].length - a[1].length);
+    for (const [key, value] of sorted) {
         if (value.length >= 4) {
             masked = masked.replaceAll(value, `***${key}***`);
         }

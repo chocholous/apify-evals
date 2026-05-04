@@ -175,11 +175,12 @@ Each test produces one dataset item with full results, metrics, and trajectory:
         "modelUsage": {}
     },
     "efficiency": {
+        "totalContextTokens": 47100,
         "tokensPerTurn": 297,
         "costPerTurn": 0.0077,
-        "cacheHitRate": 0.90,
-        "inputOutputRatio": 4.7,
-        "apiDurationRatio": 0.66,
+        "cacheHitRate": 0.95,
+        "contextOutputRatio": 53.0,
+        "apiDurationRatio": 1.07,
         "avgTurnDurationMs": 4133
     },
     "trajectory": {
