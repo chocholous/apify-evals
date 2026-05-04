@@ -1,6 +1,6 @@
 import { Actor, log } from 'apify';
-import { parseScenario, runClaude, judgeCheckpoint, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, Verdict, PresetName, ClaudeRunResult } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeCheckpoint, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
+import type { AgentResult, Verdict, PresetName, AgentRunResult } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -52,7 +52,7 @@ for (let i = 0; i < tests.length; i++) {
     log.info(`--- Test ${i + 1}/${tests.length}: "${test.test.slice(0, 80)}" ---`);
 
     let verdict: Verdict = { verdict: 'fail', evidence: 'Not executed', confidence: 0 };
-    let lastRunResult: ClaudeRunResult | null = null;
+    let lastRunResult: AgentRunResult | null = null;
     let monitorOutput: string | null = null;
     let attempt = 0;
 
@@ -62,7 +62,8 @@ for (let i = 0; i < tests.length; i++) {
         const defaultSystemPrompt = 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
         const systemPrompt = input.systemPrompt ?? defaultSystemPrompt;
 
-        const result = await runClaude({
+        const result = await runAgent({
+            agent,
             prompt: test.test,
             systemPrompt,
             model: input.model,
@@ -95,7 +96,8 @@ for (let i = 0; i < tests.length; i++) {
 
         // Monitor extraction
         if (test.monitor) {
-            const monitorResult = await runClaude({
+            const monitorResult = await runAgent({
+                agent,
                 prompt: test.monitor,
                 systemPrompt: `You were just asked to do a task. Here is what you produced:\n\n${result.text}\n\nNow answer the following monitoring question based on your work above.`,
                 model: input.model,
@@ -108,7 +110,7 @@ for (let i = 0; i < tests.length; i++) {
 
         // Judge checkpoint
         const judgeStart = Date.now();
-        verdict = await judgeCheckpoint(result.text, test.checkpoint);
+        verdict = await judgeCheckpoint(result.text, test.checkpoint, { env: secrets, workDir: process.cwd() });
         const judgeMs = Date.now() - judgeStart;
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
@@ -129,6 +131,9 @@ for (let i = 0; i < tests.length; i++) {
         scenarioName: meta.name,
         testIndex: i,
         testPrompt: test.test,
+        checkpoint: test.checkpoint,
+        agentOutput: lastRunResult?.text ?? '',
+        monitorOutput,
         verdict,
         metrics: lastRunResult?.metrics ?? {
             inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,

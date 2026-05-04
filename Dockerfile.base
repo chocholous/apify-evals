@@ -1,0 +1,39 @@
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT=actors/runner
+
+FROM apify/actor-node:24 AS builder
+
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT
+
+COPY --chown=myuser:myuser package*.json ./
+COPY --chown=myuser:myuser shared/package*.json ./shared/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+
+RUN npm install --include=dev --audit=false
+
+COPY --chown=myuser:myuser tsconfig.base.json ./
+COPY --chown=myuser:myuser shared/ ./shared/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/ ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+
+RUN cd shared && npm run build
+RUN cd ${ACTOR_PATH_IN_DOCKER_CONTEXT} && npm run build
+
+FROM apify/actor-node:24
+
+ARG ACTOR_PATH_IN_DOCKER_CONTEXT
+
+COPY --chown=myuser:myuser package*.json ./
+COPY --chown=myuser:myuser shared/package*.json ./shared/
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/package*.json ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+
+RUN npm install --omit=dev --omit=optional --audit=false \
+    && echo "Installed NPM packages:" \
+    && (npm list --omit=dev --all || true) \
+    && rm -r ~/.npm
+
+COPY --from=builder --chown=myuser:myuser /usr/src/app/shared/dist ./shared/dist
+COPY --from=builder --chown=myuser:myuser /usr/src/app/${ACTOR_PATH_IN_DOCKER_CONTEXT}/dist ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/dist
+COPY --chown=myuser:myuser ${ACTOR_PATH_IN_DOCKER_CONTEXT}/ ./${ACTOR_PATH_IN_DOCKER_CONTEXT}/
+
+WORKDIR /usr/src/app/${ACTOR_PATH_IN_DOCKER_CONTEXT}
+
+CMD ["node", "dist/main.js"]

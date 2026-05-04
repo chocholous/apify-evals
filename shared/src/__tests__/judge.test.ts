@@ -21,6 +21,12 @@ describe('parseCheckpoint', () => {
         expect(spec.value).toBe('{}');
     });
 
+    it('detects script: prefix', () => {
+        const spec = parseCheckpoint('script: ./check.sh');
+        expect(spec.type).toBe('script');
+        expect(spec.value).toBe('./check.sh');
+    });
+
     it('defaults to llm-judge for plain text', () => {
         const spec = parseCheckpoint('The answer mentions Paris as the capital.');
         expect(spec.type).toBe('llm-judge');
@@ -73,5 +79,72 @@ describe('judgeCheckpoint — deterministic', () => {
     it('json-schema: invalid json fail', async () => {
         const v = await judgeCheckpoint('not json at all', 'json-schema: {}');
         expect(v.verdict).toBe('fail');
+    });
+
+    it('json-schema: validates against schema — pass', async () => {
+        const schema = JSON.stringify({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] });
+        const v = await judgeCheckpoint('{"name": "test"}', `json-schema: ${schema}`);
+        expect(v.verdict).toBe('pass');
+        expect(v.confidence).toBe(1.0);
+    });
+
+    it('json-schema: validates against schema — fail', async () => {
+        const schema = JSON.stringify({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] });
+        const v = await judgeCheckpoint('{"age": 30}', `json-schema: ${schema}`);
+        expect(v.verdict).toBe('fail');
+        expect(v.evidence).toContain('required');
+    });
+
+    it('json-schema: invalid schema definition', async () => {
+        const v = await judgeCheckpoint('{"a":1}', 'json-schema: not-valid-json');
+        expect(v.verdict).toBe('fail');
+        expect(v.evidence).toContain('Invalid JSON schema definition');
+    });
+});
+
+describe('judgeCheckpoint — script', () => {
+    it('script: pass on exit 0', async () => {
+        const v = await judgeCheckpoint('hello world', 'script: grep -q "hello"');
+        expect(v.verdict).toBe('pass');
+        expect(v.confidence).toBe(1.0);
+    });
+
+    it('script: fail on exit non-zero', async () => {
+        const v = await judgeCheckpoint('hello world', 'script: grep -q "missing"');
+        expect(v.verdict).toBe('fail');
+        expect(v.confidence).toBe(1.0);
+    });
+
+    it('script: stdout as evidence on pass', async () => {
+        const v = await judgeCheckpoint('42', 'script: echo "value is $(cat)"');
+        expect(v.verdict).toBe('pass');
+        expect(v.evidence).toBe('value is 42');
+    });
+
+    it('script: multi-line script', async () => {
+        const script = `
+value=$(cat)
+if [ "$value" = "expected" ]; then
+  echo "correct"
+  exit 0
+else
+  echo "got: $value"
+  exit 1
+fi`;
+        const v = await judgeCheckpoint('expected', `script: ${script}`);
+        expect(v.verdict).toBe('pass');
+        expect(v.evidence).toBe('correct');
+    });
+
+    it('script: fail with stderr as evidence', async () => {
+        const v = await judgeCheckpoint('data', 'script: echo "wrong" >&2; exit 1');
+        expect(v.verdict).toBe('fail');
+        expect(v.evidence).toContain('wrong');
+    });
+
+    it('script: timeout produces fail', async () => {
+        const v = await judgeCheckpoint('data', 'script: sleep 10', { scriptTimeoutMs: 100 });
+        expect(v.verdict).toBe('fail');
+        expect(v.evidence).toContain('timed out');
     });
 });

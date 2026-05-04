@@ -49,6 +49,9 @@ export interface AgentResult {
     scenarioName: string;
     testIndex: number;
     testPrompt: string;
+    checkpoint: string;
+    agentOutput: string;
+    monitorOutput: string | null;
     verdict: Verdict;
     metrics: RunMetrics;
     aborted: boolean;
