@@ -6,16 +6,16 @@
     "initPreset": "mcp_native",
     "mcpConfigJson": {
         "mcpServers": {
-            "github": {
+            "apify": {
                 "command": "npx",
-                "args": ["-y", "@modelcontextprotocol/server-github"],
+                "args": ["-y", "apify-mcp-server"],
                 "env": {
-                    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+                    "APIFY_TOKEN": "${APIFY_TOKEN}"
                 }
             }
         }
     },
     "envVariables": {
-        "GITHUB_TOKEN": "ghp_..."
+        "APIFY_TOKEN": "apify_api_..."
     }
 }
