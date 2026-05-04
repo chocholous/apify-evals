@@ -1,6 +1,6 @@
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeCheckpoint, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, Verdict, PresetName, AgentRunResult } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult, VerdictValue } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -51,7 +51,7 @@ for (let i = 0; i < tests.length; i++) {
     const test = tests[i];
     log.info(`--- Test ${i + 1}/${tests.length}: "${test.test.slice(0, 80)}" ---`);
 
-    let verdict: Verdict = { verdict: 'fail', evidence: 'Not executed', confidence: 0 };
+    let judgeResult: JudgeResult = { verdicts: [], overallVerdict: 'fail' };
     let lastRunResult: AgentRunResult | null = null;
     let monitorOutput: string | null = null;
     let attempt = 0;
@@ -82,13 +82,19 @@ for (let i = 0; i < tests.length; i++) {
 
         if (result.aborted) {
             log.warning(`  Test ${i + 1} aborted: budget exceeded`);
-            verdict = { verdict: 'fail', evidence: 'Run aborted due to budget limit', confidence: 1 };
+            judgeResult = {
+                verdicts: [{ checkType: 'script', checkValue: '', verdict: 'fail', evidence: 'Run aborted due to budget limit', confidence: 1 }],
+                overallVerdict: 'fail',
+            };
             break;
         }
 
         if (result.error) {
             log.warning(`  Test ${i + 1} error: ${result.error}`);
-            verdict = { verdict: 'fail', evidence: `Agent error: ${result.error}`, confidence: 1 };
+            judgeResult = {
+                verdicts: [{ checkType: 'script', checkValue: '', verdict: 'fail', evidence: `Agent error: ${result.error}`, confidence: 1 }],
+                overallVerdict: 'fail',
+            };
             break;
         }
 
@@ -108,20 +114,23 @@ for (let i = 0; i < tests.length; i++) {
             log.info(`  Monitor: ${monitorOutput.slice(0, 100)}`);
         }
 
-        // Judge checkpoint
+        // Judge all checks
         const judgeStart = Date.now();
-        verdict = await judgeCheckpoint(result.text, test.checkpoint, { env: secrets, workDir: process.cwd() });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: process.cwd() });
         const judgeMs = Date.now() - judgeStart;
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
             checkpoint: test.checkpoint,
-            verdict,
+            judgeResult,
             durationMs: judgeMs,
             timestamp: new Date().toISOString(),
         }));
-        log.info(`  Verdict: ${verdict.verdict} (confidence: ${verdict.confidence}, judge: ${judgeMs}ms)`);
+        log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
+        for (const v of judgeResult.verdicts) {
+            log.info(`    ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+        }
 
-        if (verdict.verdict === 'pass') break;
+        if (judgeResult.overallVerdict === 'pass') break;
         attempt++;
     }
 
@@ -134,7 +143,8 @@ for (let i = 0; i < tests.length; i++) {
         checkpoint: test.checkpoint,
         agentOutput: lastRunResult?.text ?? '',
         monitorOutput,
-        verdict,
+        verdicts: judgeResult.verdicts,
+        overallVerdict: judgeResult.overallVerdict,
         metrics: lastRunResult?.metrics ?? {
             inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
             totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
@@ -147,7 +157,7 @@ for (let i = 0; i < tests.length; i++) {
     await Actor.pushData(agentResult);
     allResults.push(agentResult);
 
-    if (verdict.verdict !== 'pass' && meta.abortOnFailure) {
+    if (judgeResult.overallVerdict !== 'pass' && meta.abortOnFailure) {
         log.warning(`abortOnFailure=true, stopping after test ${i + 1}`);
         break;
     }
@@ -160,9 +170,9 @@ await Actor.setValue('CONVERSATION-LOG', maskedAgentLog, { contentType: 'text/pl
 const maskedJudgeLog = maskSecrets(allJudgeLines.join('\n'), secrets);
 await Actor.setValue('JUDGE-LOG', maskedJudgeLog, { contentType: 'text/plain' });
 
-const passed = allResults.filter((r) => r.verdict.verdict === 'pass').length;
-const failed = allResults.filter((r) => r.verdict.verdict === 'fail').length;
-const unclear = allResults.filter((r) => r.verdict.verdict === 'unclear').length;
+const passed = allResults.filter((r) => r.overallVerdict === 'pass').length;
+const failed = allResults.filter((r) => r.overallVerdict === 'fail').length;
+const unclear = allResults.filter((r) => r.overallVerdict === 'unclear').length;
 const totalCost = allResults.reduce((sum, r) => sum + r.metrics.totalCostUsd, 0);
 
 log.info(`\n=== Results: ${passed} passed, ${failed} failed, ${unclear} unclear | Cost: ${formatCost(totalCost)} ===`);

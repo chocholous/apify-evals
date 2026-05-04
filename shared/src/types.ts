@@ -17,7 +17,17 @@ export interface ParsedScenario {
 
 export type VerdictValue = 'pass' | 'fail' | 'unclear';
 
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge';
+
 export interface Verdict {
+    verdict: VerdictValue;
+    evidence: string;
+    confidence: number;
+}
+
+export interface CheckVerdict {
+    checkType: CheckType;
+    checkValue: string;
     verdict: VerdictValue;
     evidence: string;
     confidence: number;
@@ -52,7 +62,8 @@ export interface AgentResult {
     checkpoint: string;
     agentOutput: string;
     monitorOutput: string | null;
-    verdict: Verdict;
+    verdicts: CheckVerdict[];
+    overallVerdict: VerdictValue;
     metrics: RunMetrics;
     aborted: boolean;
     abortReason: string | null;

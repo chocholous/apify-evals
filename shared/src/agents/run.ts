@@ -33,7 +33,7 @@ const EMPTY_METRICS: RunMetrics = {
     totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
 };
 
-function parseNdjsonEvents(child: ReturnType<typeof spawn>, onEvent?: (e: ClaudeStreamEvent) => void): {
+function parseNdjsonEvents(child: ReturnType<typeof spawn>, agent: string, onEvent?: (e: ClaudeStreamEvent) => void): {
     events: ClaudeStreamEvent[];
     getText: () => string;
     getResult: () => ClaudeStreamEvent | null;
@@ -47,19 +47,49 @@ function parseNdjsonEvents(child: ReturnType<typeof spawn>, onEvent?: (e: Claude
     rl.on('line', (line) => {
         if (!line.trim()) return;
         try {
-            const event: ClaudeStreamEvent = JSON.parse(line);
-            events.push(event);
-            onEvent?.(event);
+            const event = JSON.parse(line) as Record<string, unknown>;
+            events.push(event as unknown as ClaudeStreamEvent);
+            onEvent?.(event as unknown as ClaudeStreamEvent);
 
-            if (event.type === 'assistant' && event.message?.content) {
-                for (const block of event.message.content) {
-                    if (block.type === 'text' && block.text) {
-                        text += block.text;
+            if (agent === 'claude-code') {
+                // Claude: assistant.message.content[].text
+                if (event.type === 'assistant' && (event.message as Record<string, unknown>)?.content) {
+                    for (const block of (event.message as Record<string, unknown>).content as Array<Record<string, unknown>>) {
+                        if (block.type === 'text' && block.text) {
+                            text += block.text as string;
+                        }
                     }
                 }
-            }
-            if (event.type === 'result') {
-                resultEvent = event;
+                if (event.type === 'result') {
+                    resultEvent = event as unknown as ClaudeStreamEvent;
+                }
+            } else if (agent === 'codex') {
+                // Codex: item.completed.item.text + turn.completed.usage
+                console.log(`[codex event] type="${event.type}" keys=${Object.keys(event as Record<string, unknown>).join(',')}`);
+                if (event.type === 'item.completed') {
+                    const raw = event as Record<string, unknown>;
+                    const item = raw.item as Record<string, unknown> | undefined;
+                    if (item?.text) text += item.text as string;
+                }
+                if (event.type === 'turn.completed') {
+                    const raw = event as Record<string, unknown>;
+                    const usage = raw.usage as Record<string, number> | undefined;
+                    resultEvent = {
+                        type: 'result',
+                        subtype: 'success',
+                        is_error: false,
+                        num_turns: 1,
+                        usage: usage ? {
+                            input_tokens: usage.input_tokens ?? 0,
+                            output_tokens: usage.output_tokens ?? 0,
+                            cache_read_input_tokens: usage.cached_input_tokens ?? 0,
+                        } : undefined,
+                    } as unknown as ClaudeStreamEvent;
+                }
+            } else {
+                // Generic: try to extract text from common fields
+                if (typeof event.text === 'string') text += event.text;
+                if (typeof event.result === 'string') text += event.result;
             }
         } catch { /* skip non-JSON */ }
     });
@@ -124,9 +154,15 @@ function runWithDef(def: AgentDef, options: AgentRunOptions): Promise<AgentRunRe
         const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
 
         const child = spawn(def.command, args, {
-            stdio: ['ignore', 'pipe', 'pipe'],
+            stdio: ['pipe', 'pipe', 'pipe'],
             env: childEnv,
         });
+
+        // Close stdin immediately — some CLIs (codex) wait for EOF
+        child.stdin?.end();
+
+        // Debug: log spawned command
+        console.log(`[runAgent] ${def.command} ${args.join(' ').slice(0, 100)}...`);
 
         let aborted = false;
 
@@ -145,7 +181,7 @@ function runWithDef(def: AgentDef, options: AgentRunOptions): Promise<AgentRunRe
         let events: ClaudeStreamEvent[] = [];
 
         if (def.outputFormat === 'ndjson') {
-            const parser = parseNdjsonEvents(child, options.onEvent);
+            const parser = parseNdjsonEvents(child, options.agent, options.onEvent);
             events = parser.events;
             getText = parser.getText;
             getResult = parser.getResult;
@@ -154,8 +190,12 @@ function runWithDef(def: AgentDef, options: AgentRunOptions): Promise<AgentRunRe
             getText = collector.getText;
         }
 
+        let stderrOutput = '';
+        child.stderr?.on('data', (d: Buffer) => { stderrOutput += d.toString(); });
+
         child.on('close', (code, signal) => {
             const resultEvent = getResult?.() ?? null;
+            console.log(`[runAgent] close: code=${code} text="${getText().slice(0, 50)}" events=${events.length} stderr="${stderrOutput.slice(0, 100)}"`);
 
             resolve({
                 text: getText(),

@@ -1,6 +1,7 @@
 export interface AgentDef {
     command: string;
-    promptFlag: string;
+    subcommand: string | null;
+    promptFlag: string | null;
     systemPromptFlag: string | null;
     outputFlags: string[];
     permissionFlags: string[];
@@ -15,7 +16,9 @@ export interface AgentDef {
 
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
     'claude-code': {
+        // claude -p "prompt" --output-format stream-json --verbose --dangerously-skip-permissions --no-session-persistence
         command: 'claude',
+        subcommand: null,
         promptFlag: '-p',
         systemPromptFlag: '--system-prompt',
         outputFlags: ['--output-format', 'stream-json', '--verbose'],
@@ -29,27 +32,31 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         outputFormat: 'ndjson',
     },
     'codex': {
+        // codex exec "prompt" --json --dangerously-bypass-approvals-and-sandbox --ephemeral --ignore-user-config --skip-git-repo-check
         command: 'codex',
-        promptFlag: 'exec',
+        subcommand: 'exec',
+        promptFlag: null,
         systemPromptFlag: null,
         outputFlags: ['--json'],
-        permissionFlags: ['--full-auto'],
-        sessionFlags: [],
+        permissionFlags: ['--dangerously-bypass-approvals-and-sandbox'],
+        sessionFlags: ['--ephemeral', '--ignore-user-config', '--skip-git-repo-check'],
         modelFlag: '--model',
         maxTurnsFlag: null,
         budgetFlag: null,
         mcpConfigFlag: null,
         mcpStrictFlag: null,
-        outputFormat: 'json',
+        outputFormat: 'ndjson',
     },
     'opencode': {
+        // opencode run "prompt" --format json --dangerously-skip-permissions
         command: 'opencode',
-        promptFlag: '-p',
+        subcommand: 'run',
+        promptFlag: null,
         systemPromptFlag: null,
-        outputFlags: ['-f', 'json'],
-        permissionFlags: [],
+        outputFlags: ['--format', 'json'],
+        permissionFlags: ['--dangerously-skip-permissions'],
         sessionFlags: [],
-        modelFlag: null,
+        modelFlag: '--model',
         maxTurnsFlag: null,
         budgetFlag: null,
         mcpConfigFlag: null,
@@ -73,7 +80,16 @@ export function buildAgentArgs(def: AgentDef, opts: {
 }): string[] {
     const args: string[] = [];
 
-    args.push(def.promptFlag, opts.prompt);
+    if (def.subcommand) {
+        args.push(def.subcommand);
+    }
+
+    if (def.promptFlag) {
+        args.push(def.promptFlag, opts.prompt);
+    } else {
+        args.push(opts.prompt);
+    }
+
     args.push(...def.outputFlags);
     args.push(...def.permissionFlags);
     args.push(...def.sessionFlags);
