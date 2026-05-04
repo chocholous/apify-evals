@@ -83,7 +83,7 @@ for (let i = 0; i < tests.length; i++) {
         if (result.aborted) {
             log.warning(`  Test ${i + 1} aborted: budget exceeded`);
             judgeResult = {
-                verdicts: [{ checkType: 'script', checkValue: '', verdict: 'fail', evidence: 'Run aborted due to budget limit', confidence: 1 }],
+                verdicts: [{ checkType: 'error', checkValue: '', verdict: 'fail', evidence: 'Run aborted due to budget limit', confidence: 1 }],
                 overallVerdict: 'fail',
             };
             break;
@@ -92,7 +92,7 @@ for (let i = 0; i < tests.length; i++) {
         if (result.error) {
             log.warning(`  Test ${i + 1} error: ${result.error}`);
             judgeResult = {
-                verdicts: [{ checkType: 'script', checkValue: '', verdict: 'fail', evidence: `Agent error: ${result.error}`, confidence: 1 }],
+                verdicts: [{ checkType: 'error', checkValue: '', verdict: 'fail', evidence: `Agent error: ${result.error}`, confidence: 1 }],
                 overallVerdict: 'fail',
             };
             break;

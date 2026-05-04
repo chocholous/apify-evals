@@ -6,15 +6,15 @@
         "agent": {
             "title": "Agent",
             "type": "string",
-            "description": "AI agent CLI to use for the eval run.",
-            "enum": ["claude-code"],
-            "enumTitles": ["Claude Code"],
+            "description": "AI coding agent to evaluate.",
+            "enum": ["claude-code", "codex", "opencode"],
+            "enumTitles": ["Claude Code", "Codex CLI", "OpenCode"],
             "default": "claude-code"
         },
         "model": {
             "title": "Model",
             "type": "string",
-            "description": "LLM model for the agent. Default: claude-sonnet-4-6 (cost-effective for evals). Use claude-opus-4-6 for complex tasks.",
+            "description": "LLM model for the agent (e.g. claude-sonnet-4-6, claude-opus-4-6). Leave empty for agent's default.",
             "editor": "textfield",
             "default": "claude-sonnet-4-6",
             "nullable": true
@@ -22,28 +22,30 @@
         "scenario": {
             "title": "Testing Scenario",
             "type": "string",
-            "description": "Markdown file with test scenario (YAML frontmatter + ## Test / ## Checkpoint / ## Monitor sections separated by ---).",
-            "editor": "textarea"
+            "description": "Markdown with YAML frontmatter + ## Test / ## Checkpoint sections separated by ---. Checkpoint supports: contains:, regex:, json-schema:, script: prefixes for deterministic checks, and plain text for LLM judge. Multiple checks in one checkpoint all must pass.",
+            "editor": "textarea",
+            "prefill": "---\nname: example-eval\ndescription: Simple eval demonstrating checkpoint types\nabortOnFailure: false\n---\n\n## Test\nWhat is the largest planet in our solar system? Answer in one sentence.\n\n## Checkpoint\ncontains: Jupiter\nThe answer should be scientifically accurate.\n"
         },
         "systemPrompt": {
             "title": "System Prompt",
             "type": "string",
-            "description": "Instructions sent to the agent at the start of each test. Used to configure agent behavior.",
+            "description": "Instructions for the agent at the start of each test. Default: 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.'",
             "editor": "textarea",
             "nullable": true
         },
         "maxBudgetUsd": {
             "title": "Max Budget (USD)",
             "type": "number",
-            "description": "Maximum spend in USD for the entire run. If exceeded, the run is aborted. Uses claude --max-budget-usd.",
+            "description": "Spending cap for the entire run. Soft limit — checked between agent turns, actual cost may slightly exceed this value.",
             "nullable": true,
             "minimum": 0.01,
-            "maximum": 100
+            "maximum": 100,
+            "default": 1.00
         },
         "maxRetries": {
             "title": "Max Retries on Failure",
             "type": "integer",
-            "description": "If a checkpoint fails, retry the test this many times before marking as failed. 0 = no retries.",
+            "description": "Retry a failed test this many times before marking as failed. Useful for non-deterministic tasks.",
             "default": 0,
             "minimum": 0,
             "maximum": 5
@@ -51,7 +53,7 @@
         "maxTurns": {
             "title": "Max Turns per Test",
             "type": "integer",
-            "description": "Maximum number of agent turns per test step. Limits agent runtime.",
+            "description": "Maximum agent turns (tool calls) per test. Use 3 for simple questions, 10+ for multi-step tasks.",
             "default": 10,
             "minimum": 1,
             "maximum": 100
@@ -59,32 +61,47 @@
         "envVariables": {
             "title": "Environment Variables",
             "type": "object",
-            "description": "JSON object with API keys and secrets. Available to the agent and init script. Automatically masked in conversation logs.",
+            "description": "API keys and secrets as JSON object (e.g. {\"GITHUB_TOKEN\": \"ghp_...\", \"APIFY_TOKEN\": \"apify_api_...\"}). Available to agent and init script. Automatically masked in logs.",
             "editor": "json",
             "isSecret": true,
             "nullable": true
         },
         "initPreset": {
-            "title": "Init Script Preset",
+            "title": "Tool Setup Preset",
             "type": "string",
-            "description": "Pre-defined environment setup. Applied before custom init script.",
+            "description": "Configures what tools the agent has access to. Use different presets to compare MCP vs CLI performance on the same scenario.",
             "enum": ["none", "mcp_native", "cli_native", "mcpc"],
-            "enumTitles": ["None", "MCP Native (config.json)", "CLI Native (gh, apify-cli)", "mcpc (MCP+CLI via mcpc)"],
+            "enumTitles": [
+                "None — agent uses only built-in capabilities",
+                "MCP Native — agent gets MCP servers from config JSON",
+                "CLI Native — agent uses command-line tools (gh, apify-cli)",
+                "mcpc — MCP servers via mcpc CLI bridge"
+            ],
             "default": "none"
         },
         "initBashScript": {
             "title": "Custom Init Script",
             "type": "string",
-            "description": "Bash script to set up the environment (install tools, configure MCP, etc.). Runs after the preset.",
+            "description": "Bash script to set up the environment before the agent runs. Use to install tools, download validators, or create test fixtures. Runs after the preset. Timeout: 5 minutes.",
             "editor": "textarea",
-            "nullable": true
+            "nullable": true,
+            "prefill": ""
         },
         "mcpConfigJson": {
             "title": "MCP Config JSON",
             "type": "object",
-            "description": "MCP server configuration (passed to claude --mcp-config). Only used with mcp_native or mcpc presets.",
+            "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables.",
             "editor": "json",
-            "nullable": true
+            "nullable": true,
+            "prefill": {
+                "mcpServers": {
+                    "apify": {
+                        "command": "npx",
+                        "args": ["-y", "@apify/mcp-server"],
+                        "env": { "APIFY_TOKEN": "${APIFY_TOKEN}" }
+                    }
+                }
+            }
         }
     },
     "required": ["scenario"]

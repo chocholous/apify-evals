@@ -17,13 +17,7 @@ export interface ParsedScenario {
 
 export type VerdictValue = 'pass' | 'fail' | 'unclear';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge';
-
-export interface Verdict {
-    verdict: VerdictValue;
-    evidence: string;
-    confidence: number;
-}
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge' | 'error';
 
 export interface CheckVerdict {
     checkType: CheckType;

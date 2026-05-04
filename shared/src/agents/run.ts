@@ -65,7 +65,6 @@ function parseNdjsonEvents(child: ReturnType<typeof spawn>, agent: string, onEve
                 }
             } else if (agent === 'codex') {
                 // Codex: item.completed.item.text + turn.completed.usage
-                console.log(`[codex event] type="${event.type}" keys=${Object.keys(event as Record<string, unknown>).join(',')}`);
                 if (event.type === 'item.completed') {
                     const raw = event as Record<string, unknown>;
                     const item = raw.item as Record<string, unknown> | undefined;
@@ -153,16 +152,16 @@ function runWithDef(def: AgentDef, options: AgentRunOptions): Promise<AgentRunRe
 
         const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
 
+        const stdinOption = def.stdinMode === 'ignore' ? 'ignore' as const : 'pipe' as const;
         const child = spawn(def.command, args, {
-            stdio: ['pipe', 'pipe', 'pipe'],
+            stdio: [stdinOption, 'pipe', 'pipe'],
             env: childEnv,
         });
 
-        // Close stdin immediately — some CLIs (codex) wait for EOF
-        child.stdin?.end();
-
-        // Debug: log spawned command
-        console.log(`[runAgent] ${def.command} ${args.join(' ').slice(0, 100)}...`);
+        if (def.stdinMode === 'pipe-eof') {
+            child.stdin!.write('\n');
+            child.stdin!.end();
+        }
 
         let aborted = false;
 
@@ -195,7 +194,6 @@ function runWithDef(def: AgentDef, options: AgentRunOptions): Promise<AgentRunRe
 
         child.on('close', (code, signal) => {
             const resultEvent = getResult?.() ?? null;
-            console.log(`[runAgent] close: code=${code} text="${getText().slice(0, 50)}" events=${events.length} stderr="${stderrOutput.slice(0, 100)}"`);
 
             resolve({
                 text: getText(),

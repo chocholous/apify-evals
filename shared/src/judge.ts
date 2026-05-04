@@ -58,25 +58,24 @@ function parseSubsections(checkpoint: string): ParsedCheckpoint {
 
 function parseFlatCheckpoint(checkpoint: string): ParsedCheckpoint {
     const checks: CheckpointSpec[] = [];
-    const remainingLines: string[] = [];
-
     const lines = checkpoint.split('\n');
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            remainingLines.push('');
-            continue;
-        }
+    let i = 0;
+
+    // Deterministic checks must come first (before any plain text)
+    for (; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (!trimmed) continue;
 
         const spec = parseCheckpointLine(trimmed);
         if (spec) {
             checks.push(spec);
         } else {
-            remainingLines.push(line);
+            break;
         }
     }
 
-    const judgePrompt = remainingLines.join('\n').trim() || null;
+    // Everything from first non-prefixed line onwards = LLM judge prompt
+    const judgePrompt = lines.slice(i).join('\n').trim() || null;
     return { checks, judgePrompt };
 }
 

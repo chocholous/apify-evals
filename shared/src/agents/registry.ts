@@ -12,6 +12,7 @@ export interface AgentDef {
     mcpConfigFlag: string | null;
     mcpStrictFlag: string | null;
     outputFormat: 'ndjson' | 'json' | 'text';
+    stdinMode: 'ignore' | 'pipe-eof';
 }
 
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
@@ -30,6 +31,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         mcpConfigFlag: '--mcp-config',
         mcpStrictFlag: '--strict-mcp-config',
         outputFormat: 'ndjson',
+        stdinMode: 'ignore',
     },
     'codex': {
         // codex exec "prompt" --json --dangerously-bypass-approvals-and-sandbox --ephemeral --ignore-user-config --skip-git-repo-check
@@ -46,6 +48,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         mcpConfigFlag: null,
         mcpStrictFlag: null,
         outputFormat: 'ndjson',
+        stdinMode: 'pipe-eof',
     },
     'opencode': {
         // opencode run "prompt" --format json --dangerously-skip-permissions
@@ -62,6 +65,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         mcpConfigFlag: null,
         mcpStrictFlag: null,
         outputFormat: 'json',
+        stdinMode: 'ignore',
     },
 };
 
