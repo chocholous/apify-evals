@@ -26,9 +26,10 @@ ARG ACTOR_PATH_IN_DOCKER_CONTEXT
 USER root
 RUN apk add --no-cache curl bash \
     && curl -fsSL https://claude.ai/install.sh | bash \
-    && claude --version > /tmp/.claude-version 2>/dev/null || true \
     && cp /root/.local/bin/claude /usr/local/bin/claude \
-    && chmod 755 /usr/local/bin/claude
+    && chmod 755 /usr/local/bin/claude \
+    && claude --version > /tmp/.claude-version 2>/dev/null || true
+RUN chown -R myuser:myuser /usr/src/app
 USER myuser
 
 COPY --chown=myuser:myuser package*.json ./
