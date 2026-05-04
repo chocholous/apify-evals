@@ -17,7 +17,7 @@ export interface ParsedCheckpoint {
 }
 
 export function parseCheckpointSection(checkpoint: string): ParsedCheckpoint {
-    const hasSubsections = /^###\s+(Checks|Script|Judge)/m.test(checkpoint);
+    const hasSubsections = /^###\s+(Checks?|Scripts?|Judge)/im.test(checkpoint);
 
     if (hasSubsections) {
         return parseSubsections(checkpoint);
@@ -30,7 +30,7 @@ function parseSubsections(checkpoint: string): ParsedCheckpoint {
     const checks: CheckpointSpec[] = [];
     let judgePrompt: string | null = null;
 
-    const checksMatch = checkpoint.match(/###\s+Checks\s*\n([\s\S]*?)(?=###|$)/i);
+    const checksMatch = checkpoint.match(/###\s+Checks?\s*\n([\s\S]*?)(?=###|$)/i);
     if (checksMatch) {
         const lines = checksMatch[1].trim().split('\n').filter((l) => l.trim());
         for (const line of lines) {
@@ -39,7 +39,7 @@ function parseSubsections(checkpoint: string): ParsedCheckpoint {
         }
     }
 
-    const scriptMatch = checkpoint.match(/###\s+Script\s*\n([\s\S]*?)(?=###|$)/i);
+    const scriptMatch = checkpoint.match(/###\s+Scripts?\s*\n([\s\S]*?)(?=###|$)/i);
     if (scriptMatch) {
         const scriptValue = scriptMatch[1].trim();
         if (scriptValue) {

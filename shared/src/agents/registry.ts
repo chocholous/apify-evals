@@ -17,7 +17,6 @@ export interface AgentDef {
 
 export const AGENT_REGISTRY: Record<string, AgentDef> = {
     'claude-code': {
-        // claude -p "prompt" --output-format stream-json --verbose --dangerously-skip-permissions --no-session-persistence
         command: 'claude',
         subcommand: null,
         promptFlag: '-p',
@@ -34,7 +33,6 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         stdinMode: 'ignore',
     },
     'codex': {
-        // codex exec "prompt" --json --dangerously-bypass-approvals-and-sandbox --ephemeral --ignore-user-config --skip-git-repo-check
         command: 'codex',
         subcommand: 'exec',
         promptFlag: null,
@@ -51,7 +49,6 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         stdinMode: 'pipe-eof',
     },
     'opencode': {
-        // opencode run "prompt" --format json --dangerously-skip-permissions
         command: 'opencode',
         subcommand: 'run',
         promptFlag: null,
@@ -64,7 +61,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         budgetFlag: null,
         mcpConfigFlag: null,
         mcpStrictFlag: null,
-        outputFormat: 'json',
+        outputFormat: 'ndjson',
         stdinMode: 'ignore',
     },
 };

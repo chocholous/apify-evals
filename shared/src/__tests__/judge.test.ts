@@ -124,6 +124,36 @@ Evaluate the quality of the response.`;
         expect(result.checks).toHaveLength(0);
         expect(result.judgePrompt).toBe('Evaluate the quality of the response.');
     });
+
+    it('accepts singular ### Check', () => {
+        const checkpoint = `### Check
+contains: Jupiter`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.checks).toHaveLength(1);
+        expect(result.checks[0].type).toBe('contains');
+    });
+
+    it('accepts ### Scripts (plural)', () => {
+        const checkpoint = `### Scripts
+echo "ok"`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.checks).toHaveLength(1);
+        expect(result.checks[0].type).toBe('script');
+    });
+
+    it('case-insensitive subsection headers', () => {
+        const checkpoint = `### CHECKS
+contains: test
+
+### JUDGE
+Evaluate quality.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.checks).toHaveLength(1);
+        expect(result.judgePrompt).toBe('Evaluate quality.');
+    });
 });
 
 describe('judgeAllChecks — deterministic', () => {

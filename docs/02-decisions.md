@@ -235,3 +235,32 @@ Původní spec navrhovalo metamorph do ai-sandbox pro využití jeho persistence
 **Ověřeno spike S1, S3, S5.** Claude CLI funguje s OAuth autentizací. LLM judge přes `claude -p --json-schema` nevyžaduje samostatný `ANTHROPIC_API_KEY`.
 
 V Apify Docker kontejneru bude auth řešený přes env var `CLAUDE_CODE_OAUTH_TOKEN` (secure input od uživatele).
+
+---
+
+## D15: Fat Docker image vs. per-agent images
+
+### Rozhodnutí: Jeden fat Dockerfile se všemi agent CLI
+
+Jeden `Dockerfile` v rootu repa instaluje všechny CLI nástroje (Claude Code, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input parametr `agent`.
+
+### Zamítnuto: Separate Dockerfiles per agent, Actor.metamorph()
+
+**Důvody pro fat image:**
+
+| Kritérium | Fat image | Per-agent images | Metamorph |
+|-----------|-----------|-----------------|-----------|
+| Jednoduchost | Jeden Dockerfile, jeden deploy | 3+ Dockerfile, manuální přepínání actor.json | Dispatcher Actor + N target Actors |
+| Testovatelnost | Jeden build test | N build testů | Nelze testovat lokálně (`metamorph()` je no-op) |
+| Deploy | `apify push` | `apify push` + přepnout dockerfile | Deploy N Actors |
+| Image size | ~200 MB (všechny CLI) | ~100 MB (jen jedno CLI) | Optimální per-agent |
+| Apify podpora | 1 Actor = 1 Dockerfile (nativní) | actor.json nemá multi-dockerfile | Max 10 metamorphs/run, env vars se nepřenesou |
+
+**Proč ne metamorph:**
+- `Actor.metamorph()` nepřenáší env vars z původního Actoru — runner potřebuje `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` atd.
+- Nefunguje lokálně (SDK jen loguje warning) — dual code path pro testování
+- Runner orchestruje celý eval flow (parse → run → judge → log) — metamorph nahradí celý kontejner, nelze se vrátit
+
+**Výhled:** Metamorph by se hodil pro Orchestrator (Fáze 3) jako dispatcher do per-agent Runner Actors, pokud by velikost fat image byla problém. Zatím není potřeba.
+
+**Verzování CLI:** Image instaluje latest verze. Pokud uživatel potřebuje specifickou verzi agenta, řeší to v `initBashScript` (odinstalace + instalace verzované verze).

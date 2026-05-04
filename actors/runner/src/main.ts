@@ -1,6 +1,6 @@
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult, VerdictValue } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -23,13 +23,16 @@ if (!input?.scenario) {
     throw new Error('Missing required input: scenario');
 }
 
-const { meta, tests } = parseScenario(input.scenario);
+const { meta, tests, parseWarnings } = parseScenario(input.scenario);
 const secrets = input.envVariables ?? {};
 const agent = input.agent ?? 'claude-code';
 const maxRetries = input.maxRetries ?? 0;
 const maxTurns = input.maxTurns ?? 10;
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
+if (parseWarnings) {
+    for (const w of parseWarnings) log.warning(`[parse] ${w}`);
+}
 
 const preset = (input.initPreset ?? 'none') as PresetName;
 const initResult = runInitPreset({
@@ -134,6 +137,22 @@ for (let i = 0; i < tests.length; i++) {
         attempt++;
     }
 
+    const emptyMetrics = {
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+        totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
+    };
+    const emptyEfficiency = {
+        tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
+        inputOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
+    };
+    const emptyTrajectory = {
+        toolCallCount: 0, toolCallSequence: [] as string[], uniqueToolsUsed: [] as string[],
+        toolCallsPerTurn: 0, perTurnTokens: [] as Array<{ turn: number; input: number; output: number }>,
+        perTurnToolCalls: [] as Array<{ turn: number; tools: string[] }>,
+        errorRecoveryCount: 0, filesCreated: [] as string[], filesModified: [] as string[],
+        commandsExecuted: [] as string[], mcpToolsUsed: [] as string[],
+    };
+
     const agentResult: AgentResult = {
         agent,
         model: input.model ?? 'default',
@@ -145,10 +164,11 @@ for (let i = 0; i < tests.length; i++) {
         monitorOutput,
         verdicts: judgeResult.verdicts,
         overallVerdict: judgeResult.overallVerdict,
-        metrics: lastRunResult?.metrics ?? {
-            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-            totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
-        },
+        metrics: lastRunResult?.metrics ?? emptyMetrics,
+        efficiency: lastRunResult?.efficiency ?? emptyEfficiency,
+        trajectory: lastRunResult?.trajectory ?? emptyTrajectory,
+        stopReason: lastRunResult?.stopReason ?? 'unknown',
+        exitCode: lastRunResult?.exitCode ?? null,
         aborted: lastRunResult?.aborted ?? false,
         abortReason: lastRunResult?.aborted ? 'budget_exceeded' : null,
         error: lastRunResult?.error ?? null,

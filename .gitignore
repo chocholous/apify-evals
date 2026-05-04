@@ -4,3 +4,6 @@ dist/
 storage/
 *.tgz
 .eval-config/
+# Root-level actor files (created by apify run, not for commit)
+/.actor/
+/.actorignore

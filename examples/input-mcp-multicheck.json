@@ -1,0 +1,19 @@
+{
+    "agent": "claude-code",
+    "scenario": "---\nname: mcp-github-test\ndescription: Test agent's ability to use GitHub MCP server\nabortOnFailure: false\n---\n\n## Test\nUsing the GitHub MCP tools, find the most recent open issue in the repository \"apify/crawlee\". Tell me the issue title and number.\n\n## Checkpoint\nregex: #\\d+\ncontains: crawlee\nThe answer should reference a real, currently open issue with its number and title.\n",
+    "maxTurns": 5,
+    "maxBudgetUsd": 1.00,
+    "initPreset": "mcp_native",
+    "mcpConfigJson": {
+        "mcpServers": {
+            "github": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github"],
+                "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+            }
+        }
+    },
+    "envVariables": {
+        "GITHUB_TOKEN": "ghp_..."
+    }
+}

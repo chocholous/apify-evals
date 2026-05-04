@@ -112,9 +112,9 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
-            const r = results[0] as Record<string, Record<string, unknown>>;
-            if (r.verdict?.verdict !== 'pass') return { pass: false, details: `Expected pass, got ${r.verdict?.verdict}` };
-            return { pass: true, details: `Verdict: pass, confidence: ${r.verdict?.confidence}` };
+            const r = results[0] as any;
+            if (r.overallVerdict !== 'pass') return { pass: false, details: `Expected pass, got ${r.overallVerdict}` };
+            return { pass: true, details: `Verdict: pass, confidence: ${r.verdicts?.[0]?.confidence}` };
         },
     },
     {
@@ -127,7 +127,7 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
-            const verdicts = results.map((r: any) => r.verdict?.verdict);
+            const verdicts = results.map((r: any) => r.overallVerdict);
             const allPass = verdicts.every((v: string) => v === 'pass');
             return {
                 pass: allPass,
@@ -145,8 +145,8 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
-            const v0 = (results[0] as any).verdict?.verdict;
-            const v1 = (results[1] as any).verdict?.verdict;
+            const v0 = (results[0] as any).overallVerdict;
+            const v1 = (results[1] as any).overallVerdict;
             const idx0 = (results[0] as any).testIndex;
             const idx1 = (results[1] as any).testIndex;
             if (idx0 !== 0 || idx1 !== 1) return { pass: false, details: `Wrong testIndex: ${idx0}, ${idx1}` };
@@ -167,7 +167,7 @@ const tests: TestDef[] = [
         },
         checks: (results, kvFiles) => {
             if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
-            const v = (results[0] as any).verdict?.verdict;
+            const v = (results[0] as any).overallVerdict;
 
             const logFile = kvFiles.find((f) => f.includes('CONVERSATION-LOG'));
             if (!logFile) return { pass: false, details: 'No CONVERSATION-LOG in KV store' };
@@ -192,10 +192,10 @@ const tests: TestDef[] = [
         checks: (results) => {
             if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
             const r = results[0] as any;
-            const abortedOrFailed = r.aborted === true || r.error != null || r.verdict?.verdict === 'fail';
+            const abortedOrFailed = r.aborted === true || r.error != null || r.overallVerdict === 'fail';
             return {
                 pass: abortedOrFailed,
-                details: `Aborted: ${r.aborted}, Error: ${r.error}, Verdict: ${r.verdict?.verdict}, Cost: $${r.metrics?.totalCostUsd}`,
+                details: `Aborted: ${r.aborted}, Error: ${r.error}, Verdict: ${r.overallVerdict}, Cost: $${r.metrics?.totalCostUsd}`,
             };
         },
     },
@@ -210,8 +210,8 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
-            const verdicts = results.map((r: any) => `${r.verdict?.verdict}(${r.verdict?.confidence})`);
-            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            const verdicts = results.map((r: any) => `${r.overallVerdict}(${r.verdicts?.[0]?.confidence})`);
+            const allPass = results.every((r: any) => r.overallVerdict === 'pass');
             return { pass: allPass, details: `Multi-tool task: ${verdicts.join(', ')}` };
         },
     },
@@ -225,7 +225,7 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 1) return { pass: false, details: `Expected 1 result, got ${results.length}` };
-            const v = (results[0] as any).verdict?.verdict;
+            const v = (results[0] as any).overallVerdict;
             return {
                 pass: v === 'fail',
                 details: `Expected judge to detect failure. Verdict: ${v} (should be 'fail')`,
@@ -243,9 +243,9 @@ const tests: TestDef[] = [
         checks: (results) => {
             if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
             const details = results.map((r: any, i: number) =>
-                `Test ${i}: ${r.verdict?.verdict}(${r.verdict?.confidence}) — "${(r.verdict?.evidence ?? '').slice(0, 80)}"`
+                `Test ${i}: ${r.overallVerdict}(${r.verdicts?.[0]?.confidence}) — "${(r.verdicts?.[0]?.evidence ?? '').slice(0, 80)}"`
             );
-            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            const allPass = results.every((r: any) => r.overallVerdict === 'pass');
             return { pass: allPass, details: details.join(' | ') };
         },
     },
@@ -260,9 +260,9 @@ const tests: TestDef[] = [
         checks: (results) => {
             if (results.length !== 2) return { pass: false, details: `Expected 2 results, got ${results.length}` };
             const details = results.map((r: any, i: number) =>
-                `Test ${i}: ${r.verdict?.verdict}(${r.verdict?.confidence})`
+                `Test ${i}: ${r.overallVerdict}(${r.verdicts?.[0]?.confidence})`
             );
-            const allPass = results.every((r: any) => r.verdict?.verdict === 'pass');
+            const allPass = results.every((r: any) => r.overallVerdict === 'pass');
             return {
                 pass: allPass,
                 details: `Borderline judge: ${details.join(', ')} (non-deterministic — nuanced checkpoints)`,
@@ -282,7 +282,7 @@ const tests: TestDef[] = [
                 pass: false,
                 details: `Expected 1 result (step 2 should NOT run), got ${results.length}`,
             };
-            const v = (results[0] as any).verdict?.verdict;
+            const v = (results[0] as any).overallVerdict;
             return {
                 pass: v === 'fail',
                 details: `Step 1 failed (${v}), step 2 was correctly skipped (only 1 result in dataset)`,
@@ -299,7 +299,7 @@ const tests: TestDef[] = [
         },
         checks: (results) => {
             if (results.length !== 3) return { pass: false, details: `Expected 3 results, got ${results.length}` };
-            const verdicts = results.map((r: any) => r.verdict?.verdict);
+            const verdicts = results.map((r: any) => r.overallVerdict);
             const allPass = verdicts.every((v: string) => v === 'pass');
             return {
                 pass: allPass,

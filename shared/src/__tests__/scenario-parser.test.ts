@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { parseScenario } from '../scenario-parser.js';
+import { parseScenario, ScenarioParseError } from '../scenario-parser.js';
 
 describe('parseScenario', () => {
     it('parses single test with all sections', () => {
@@ -148,5 +148,70 @@ Another valid checkpoint.
         const result = parseScenario(md);
 
         expect(result.tests).toHaveLength(2);
+        expect(result.parseWarnings).toBeUndefined();
+    });
+});
+
+describe('parseScenario — validation', () => {
+    it('throws on empty input', () => {
+        expect(() => parseScenario('')).toThrow(ScenarioParseError);
+        expect(() => parseScenario('   ')).toThrow(ScenarioParseError);
+    });
+
+    it('throws if name is missing', () => {
+        const md = `---
+description: no name
+---
+
+## Test
+Do something.
+
+## Checkpoint
+It was done.
+`;
+        expect(() => parseScenario(md)).toThrow('must have a "name"');
+    });
+
+    it('throws if no valid tests found', () => {
+        const md = `---
+name: empty-scenario
+---
+
+Just some text without any test headers.
+`;
+        expect(() => parseScenario(md)).toThrow('has no valid tests');
+    });
+
+    it('throws with details if ## Test exists but ## Checkpoint missing', () => {
+        const md = `---
+name: broken
+---
+
+## Test
+Do something.
+`;
+        expect(() => parseScenario(md)).toThrow('missing the other');
+    });
+
+    it('returns parseWarnings for partially invalid blocks', () => {
+        const md = `---
+name: mixed
+---
+
+## Test
+Valid test.
+
+## Checkpoint
+Valid checkpoint.
+
+---
+
+## Test
+Orphan test without checkpoint.
+`;
+        const result = parseScenario(md);
+        expect(result.tests).toHaveLength(1);
+        expect(result.parseWarnings).toHaveLength(1);
+        expect(result.parseWarnings![0]).toContain('missing the other');
     });
 });
