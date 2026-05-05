@@ -41,22 +41,29 @@ RUN npm install -g @openai/codex apify-cli
 # Verify all CLIs are available
 RUN claude --version && codex --version && opencode --version && apify --version
 
-RUN chown -R myuser:myuser /usr/src/app
-USER myuser
-
-COPY --chown=myuser:myuser package*.json ./
-COPY --chown=myuser:myuser shared/package*.json ./shared/
-COPY --chown=myuser:myuser actors/runner/package*.json ./actors/runner/
+# Install runtime deps as root (npm needs write access to node_modules)
+COPY package*.json ./
+COPY shared/package*.json ./shared/
+COPY actors/runner/package*.json ./actors/runner/
 
 RUN npm install --omit=dev --omit=optional --audit=false --workspaces \
     && echo "Installed NPM packages:" \
     && (npm list --omit=dev --all || true) \
-    && rm -r ~/.npm
+    && rm -r /root/.npm
 
-COPY --from=builder --chown=myuser:myuser /usr/src/app/shared/dist ./shared/dist
-COPY --from=builder --chown=myuser:myuser /usr/src/app/actors/runner/dist ./actors/runner/dist
-COPY --chown=myuser:myuser actors/runner/ ./actors/runner/
+# Copy compiled code
+COPY --from=builder /usr/src/app/shared/dist ./shared/dist
+COPY --from=builder /usr/src/app/actors/runner/dist ./actors/runner/dist
+COPY actors/runner/ ./actors/runner/
 
+# Lock down runner code: root owns /usr/src/app (agent can't modify runner files)
+# Agent workspace will be created at /tmp/eval-workspace-* (writable by myuser)
+RUN chown -R root:root /usr/src/app \
+    && chmod -R 755 /usr/src/app \
+    && mkdir -p /home/myuser \
+    && chown myuser:myuser /home/myuser
+
+USER myuser
 WORKDIR /usr/src/app/actors/runner
 
 CMD ["node", "dist/main.js"]
