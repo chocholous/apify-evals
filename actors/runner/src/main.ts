@@ -102,6 +102,7 @@ for (let i = 0; i < tests.length; i++) {
 
     while (attempt <= maxRetries) {
         if (attempt > 0) log.info(`  Retry ${attempt}/${maxRetries}`);
+        monitorOutput = null;
 
         const defaultSystemPrompt = 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
         const systemPrompt = input.systemPrompt ?? defaultSystemPrompt;
@@ -147,16 +148,24 @@ for (let i = 0; i < tests.length; i++) {
 
         // Monitor extraction
         if (test.monitor) {
-            const monitorResult = await runAgent({
-                agent,
-                prompt: test.monitor,
-                systemPrompt: `You were just asked to do a task. Here is what you produced:\n\n${result.text}\n\nNow answer the following monitoring question based on your work above.`,
-                model: input.model,
-                maxTurns: 3,
-                env: secrets,
-            });
-            monitorOutput = monitorResult.text;
-            log.info(`  Monitor: ${monitorOutput.slice(0, 100)}`);
+            try {
+                const monitorResult = await runAgent({
+                    agent,
+                    prompt: test.monitor,
+                    systemPrompt: `You were just asked to do a task. Here is what you produced:\n\n${result.text}\n\nNow answer the following monitoring question based on your work above.`,
+                    model: input.model,
+                    maxTurns: 3,
+                    env: secrets,
+                });
+                if (monitorResult.error) {
+                    log.warning(`  Monitor failed: ${monitorResult.error}`);
+                } else {
+                    monitorOutput = monitorResult.text;
+                    log.info(`  Monitor: ${monitorOutput.slice(0, 100)}`);
+                }
+            } catch (err: unknown) {
+                log.warning(`  Monitor error: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
 
         // Judge all checks

@@ -37,8 +37,10 @@ export function parseScenario(markdown: string): ParsedScenario {
         throw new ScenarioParseError('Scenario must have a "name" in YAML frontmatter');
     }
 
+    // Split on --- only when it separates test blocks (followed by ## Test or end of content).
+    // This avoids splitting on --- used as horizontal rules inside test/checkpoint content.
     const rawBlocks = content
-        .split(/^---$/m)
+        .split(/^---$(?=\s*\n(?:## Test|\s*$))/m)
         .map((b) => b.trim())
         .filter((b) => b.length > 0);
 

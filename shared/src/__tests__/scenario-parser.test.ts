@@ -193,6 +193,25 @@ Do something.
         expect(() => parseScenario(md)).toThrow('missing the other');
     });
 
+    it('does not split on --- inside test content', () => {
+        const md = `---
+name: hr-in-content
+---
+
+## Test
+Here is some markdown:
+---
+This is still part of the test prompt.
+
+## Checkpoint
+contains: part of the test
+`;
+        const result = parseScenario(md);
+        expect(result.tests).toHaveLength(1);
+        expect(result.tests[0].test).toContain('---');
+        expect(result.tests[0].test).toContain('still part of the test');
+    });
+
     it('returns parseWarnings for partially invalid blocks', () => {
         const md = `---
 name: mixed

@@ -3,7 +3,7 @@ export { runClaude, judgeLlm } from './agents/claude.js';
 export { runAgent } from './agents/run.js';
 export { getAgentDef, buildAgentArgs, AGENT_REGISTRY } from './agents/registry.js';
 export { judgeCheckpoint, judgeAllChecks, parseCheckpoint, parseCheckpointSection } from './judge.js';
-export { extractMetrics, extractToolCalls, formatCost, formatDuration } from './metrics.js';
+export { formatCost, formatDuration } from './metrics.js';
 export { maskSecrets, maskEventsJsonl, stripEnvFromProcess } from './log-masker.js';
 export { runInitPreset } from './init-presets.js';
 
