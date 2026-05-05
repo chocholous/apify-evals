@@ -20,8 +20,7 @@ Write: src/validator.ts
 ## Checkpoint
 
 ### Script
-# Run the pre-existing tests
-cd $EVAL_WORKSPACE 2>/dev/null || true
+# Run the pre-existing tests (timeout 60s for npm cold start)
 npx vitest run 2>&1 | tail -3
 RESULT=$?
 if [ $RESULT -eq 0 ]; then

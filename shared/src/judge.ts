@@ -111,7 +111,7 @@ export interface ScriptJudgeOptions {
 }
 
 function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions): CheckVerdict {
-    const timeoutMs = options?.timeoutMs ?? 30_000;
+    const timeoutMs = options?.timeoutMs ?? 60_000;
     try {
         const stdout = execSync(script, {
             input: agentOutput,

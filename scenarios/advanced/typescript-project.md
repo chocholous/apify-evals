@@ -10,7 +10,7 @@ expectedTools:
 ---
 
 ## Test
-Create a TypeScript project in the current directory:
+Create a TypeScript project in /tmp/eval-ts-project (create the directory first):
 1. Initialize with npm (package.json with type: module)
 2. Install typescript and vitest as dev dependencies
 3. Create tsconfig.json with strict mode, ES2022 target, NodeNext module
@@ -28,6 +28,7 @@ Write: tsconfig.json, src/calculator.ts, src/calculator.test.ts
 regex: (pass|✓|PASS)
 
 ### Script
+cd /tmp/eval-ts-project 2>/dev/null || { echo "/tmp/eval-ts-project not found"; exit 1; }
 # Verify project structure
 test -f package.json || { echo "package.json missing"; exit 1; }
 test -f tsconfig.json || { echo "tsconfig.json missing"; exit 1; }

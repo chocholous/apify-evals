@@ -1,8 +1,10 @@
-node_modules/
+**/node_modules/
 .git/
-dist/
+**/dist/
 spikes/
-storage/
+**/storage/
 *.log
 .env
 .DS_Store
+shared/dist/
+actors/runner/dist/
