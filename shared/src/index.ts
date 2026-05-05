@@ -7,7 +7,7 @@ export { formatCost, formatDuration } from './metrics.js';
 export { maskSecrets, maskEventsJsonl, stripEnvFromProcess } from './log-masker.js';
 export { runInitPreset } from './init-presets.js';
 
-export type { ParsedScenario, TestCase, ScenarioMeta } from './types.js';
+export type { ParsedScenario, TestCase, ScenarioMeta, ActorSpec, ExpectedToolCall } from './types.js';
 export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, DiscoverabilityMetrics, ExpectedTools, AgentEvent, ClaudeStreamEvent, ModelUsage, AgentType } from './types.js';
 export type { ClaudeRunOptions, ClaudeRunResult, ClaudeJudgeOptions } from './agents/claude.js';
 export type { AgentRunOptions, AgentRunResult } from './agents/run.js';

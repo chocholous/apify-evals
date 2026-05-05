@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
 
-import type { ParsedScenario, ScenarioMeta, TestCase, ExpectedTools, ExpectedToolCall } from './types.js';
+import type { ParsedScenario, ScenarioMeta, TestCase, ExpectedTools, ExpectedToolCall, ActorSpec } from './types.js';
 
 export class ScenarioParseError extends Error {
     constructor(message: string) {
@@ -31,6 +31,9 @@ export function parseScenario(markdown: string): ParsedScenario {
         description: data.description ?? '',
         abortOnFailure: data.abortOnFailure ?? false,
         expectedTools,
+        language: typeof data.language === 'string' ? data.language : undefined,
+        template: typeof data.template === 'string' ? data.template : undefined,
+        actorSpec: data.actorSpec && typeof data.actorSpec === 'object' ? data.actorSpec as ActorSpec : undefined,
     };
 
     if (!meta.name || meta.name === 'unnamed') {

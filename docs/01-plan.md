@@ -105,33 +105,33 @@ Všechny spiky proběhly úspěšně. Kód v `spikes/`.
 
 ## Implementační plán
 
-### Fáze 1: MVP — Runner + Claude Code
+### ~~Fáze 1: MVP — Runner + Claude Code~~ ✅ HOTOVO
 **US1, US5, US6, US7**
 
-1. **F1.0: Projekt setup** — monorepo, `actors/runner/`, `shared/`, CLAUDE.md, AGENTS.md, ESLint, Prettier
-2. ~~**F1.1: Spike testy**~~ — **HOTOVO** (S1-S6 proběhly, výsledky výše)
-3. **F1.2: Shared library** — types, scenario-parser, claude adapter, judge, metrics, log-masker, unit testy
-4. **F1.3: Runner Actor** — input/output/dataset schema, Dockerfile, main loop, streaming tracking, env var handling, KV + dataset storage, graceful abort
-5. **F1.4: Init script presets** — mcp_native, cli_native, mcpc + custom textarea
+1. ~~**F1.0: Projekt setup**~~ ✅
+2. ~~**F1.1: Spike testy**~~ ✅
+3. ~~**F1.2: Shared library**~~ ✅ — types, scenario-parser, agent adaptery (Claude/Codex/OpenCode), judge (5 checkpoint typů), metrics, log-masker
+4. ~~**F1.3: Runner Actor**~~ ✅ — input/output/dataset schema, Dockerfile (fat image), main loop, streaming, env vars, KV + dataset, graceful abort
+5. ~~**F1.4: Init script presets**~~ ✅ — mcp_native, cli_native, mcpc + custom textarea
 
-### Fáze 2: Multi-agent + Tool Discovery
+### ~~Fáze 2: Multi-agent + Tool Discovery~~ ✅ HOTOVO
 **US1 rozšíření, US8, US9**
 
-- Codex CLI adapter, OpenCode adapter, Dockerfile update, agent-specific token counting
-- Opravit token metriky (cacheHitRate, perTurnTokens deduplikace, totalContextTokens)
-- `expectedTools` v scenario frontmatter + discoverability scoring
-- `toolCallDetails` — sbírat tool call inputs (argumenty) do trajectory
-- `## Expected Tools` sekce s parameter hints
-- Graceful abort (`Actor.on('aborting')`)
+- ~~Codex CLI adapter, OpenCode adapter~~ ✅ — registry + per-agent parsery (pipeline ověřen, credentials TBD)
+- ~~Token metriky opraveny~~ ✅ — cacheHitRate (0-1), perTurnTokens deduplikace, totalContextTokens
+- ~~expectedTools + discoverability scoring~~ ✅
+- ~~toolCallDetails~~ ✅ — tool call inputs (truncated) v trajectory
+- ~~## Expected Tools sekce~~ ✅
+- ~~Graceful abort~~ ✅
 
-### Fáze 2.5: Actor Development Evals
+### ~~Fáze 2.5: Actor Development Evals~~ ✅ HOTOVO
 **US10, US11**
 
-- `actorSpec`, `language`, `template` v scenario frontmatter
-- Init script: scaffold Actor z template
-- Script checkpointy pro Actor validation (`apify run` + output check)
-- LLM judge pro fuzzy schema comparison
-- Vzorové scénáře: CheerioCrawler scraper, PlaywrightCrawler, API Actor
+- ~~`actorSpec`, `language`, `template` v scenario frontmatter~~ ✅ — parser + system prompt injection
+- Init script: scaffold Actor z template — řešitelné přes `initBashScript`
+- ~~Script checkpointy pro Actor validation~~ ✅ — `apify run` + output check v script checkpoint
+- ~~LLM judge pro fuzzy schema comparison~~ ✅ — přes `### Judge` subsekci
+- ~~Vzorový scénář: CheerioCrawler scraper~~ ✅ — `scenarios/actor-dev/cheerio-scraper.md`
 
 ### Fáze 3: Orchestrator Actor
 **US2, US3, US4**
