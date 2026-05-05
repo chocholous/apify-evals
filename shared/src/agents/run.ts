@@ -43,6 +43,7 @@ const EMPTY_METRICS: RunMetrics = {
 const EMPTY_EFFICIENCY: EfficiencyMetrics = {
     totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
     contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
+    toolExecutionMs: 0, planningTurns: 0, executionTurns: 0,
 };
 
 const EMPTY_TRAJECTORY: TrajectoryMetrics = {
@@ -469,20 +470,22 @@ function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
 
 // --- Metrics derivation ---
 
-function deriveEfficiency(metrics: RunMetrics): EfficiencyMetrics {
+function deriveEfficiency(metrics: RunMetrics, perTurnToolCalls: Array<{ turn: number; tools: string[] }>): EfficiencyMetrics {
     const turns = metrics.numTurns || 1;
+    const totalContext = metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens;
+    const executionTurns = perTurnToolCalls.filter((t) => t.tools.length > 0).length;
+    const planningTurns = perTurnToolCalls.length - executionTurns;
     return {
-        totalContextTokens: metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens,
+        totalContextTokens: totalContext,
         tokensPerTurn: metrics.outputTokens / turns,
         costPerTurn: metrics.totalCostUsd / turns,
-        cacheHitRate: (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens) > 0
-            ? metrics.cacheReadTokens / (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens)
-            : 0,
-        contextOutputRatio: metrics.outputTokens > 0
-            ? (metrics.inputTokens + metrics.cacheReadTokens + metrics.cacheCreationTokens) / metrics.outputTokens
-            : 0,
+        cacheHitRate: totalContext > 0 ? metrics.cacheReadTokens / totalContext : 0,
+        contextOutputRatio: metrics.outputTokens > 0 ? totalContext / metrics.outputTokens : 0,
         apiDurationRatio: metrics.durationMs > 0 ? metrics.durationApiMs / metrics.durationMs : 0,
         avgTurnDurationMs: metrics.durationMs / turns,
+        toolExecutionMs: Math.max(0, metrics.durationMs - metrics.durationApiMs),
+        planningTurns,
+        executionTurns,
     };
 }
 
@@ -621,11 +624,13 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             }
             try { unlinkSync(markerPath); } catch { /* ignore */ }
 
+            const trajectory = deriveTrajectory(trajectoryData, metrics.numTurns);
+
             resolve({
                 text: parsed.getText(),
                 metrics,
-                efficiency: deriveEfficiency(metrics),
-                trajectory: deriveTrajectory(trajectoryData, metrics.numTurns),
+                trajectory,
+                efficiency: deriveEfficiency(metrics, trajectory.perTurnToolCalls),
                 events,
                 exitCode: code,
                 signal,

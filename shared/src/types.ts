@@ -77,6 +77,9 @@ export interface EfficiencyMetrics {
     contextOutputRatio: number;     // totalContext / output (how much reading vs generating)
     apiDurationRatio: number;       // apiMs / wallMs (can be >1 if parallel calls)
     avgTurnDurationMs: number;      // wallMs / numTurns
+    toolExecutionMs: number;        // durationMs - durationApiMs (time spent in tools, not LLM)
+    planningTurns: number;          // turns with only text output (no tool calls)
+    executionTurns: number;         // turns with at least one tool call
 }
 
 export interface ToolCallDetail {
@@ -125,6 +128,12 @@ export interface ModelUsage {
     costUSD: number;
 }
 
+export interface JudgeMetrics {
+    judgeCostUsd: number;           // cost of LLM judge calls
+    judgeLatencyMs: number;        // time spent in judge (all checks)
+    judgeTurns: number;             // number of LLM judge calls made
+}
+
 export interface AgentResult {
     agent: string;
     model: string;
@@ -133,6 +142,7 @@ export interface AgentResult {
     testPrompt: string;
     checkpoint: string;
     agentOutput: string;
+    agentOutputLength: number;
     monitorOutput: string | null;
     verdicts: CheckVerdict[];
     overallVerdict: VerdictValue;
@@ -140,6 +150,8 @@ export interface AgentResult {
     efficiency: EfficiencyMetrics;
     trajectory: TrajectoryMetrics;
     discoverability: DiscoverabilityMetrics | null;
+    judge: JudgeMetrics;
+    retryAttempts: number;
     stopReason: string;
     exitCode: number | null;
     aborted: boolean;

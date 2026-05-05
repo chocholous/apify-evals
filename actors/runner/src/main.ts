@@ -106,6 +106,7 @@ for (let i = 0; i < tests.length; i++) {
     let lastRunResult: AgentRunResult | null = null;
     let monitorOutput: string | null = null;
     let attempt = 0;
+    let judgeMs = 0;
 
     while (attempt <= maxRetries) {
         if (attempt > 0) log.info(`  Retry ${attempt}/${maxRetries}`);
@@ -196,7 +197,7 @@ for (let i = 0; i < tests.length; i++) {
         // Judge all checks
         const judgeStart = Date.now();
         judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir });
-        const judgeMs = Date.now() - judgeStart;
+        judgeMs = Date.now() - judgeStart;
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
             checkpoint: test.checkpoint,
@@ -220,6 +221,7 @@ for (let i = 0; i < tests.length; i++) {
     const emptyEfficiency = {
         totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
         contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
+        toolExecutionMs: 0, planningTurns: 0, executionTurns: 0,
     };
     const emptyTrajectory = {
         toolCallCount: 0, toolCallSequence: [] as string[], uniqueToolsUsed: [] as string[],
@@ -230,6 +232,7 @@ for (let i = 0; i < tests.length; i++) {
         commandsExecuted: [] as string[], mcpToolsUsed: [] as string[],
     };
 
+    const outputText = lastRunResult?.text ?? '';
     const agentResult: AgentResult = {
         agent,
         model: input.model ?? 'default',
@@ -237,7 +240,8 @@ for (let i = 0; i < tests.length; i++) {
         testIndex: i,
         testPrompt: test.test,
         checkpoint: test.checkpoint,
-        agentOutput: lastRunResult?.text ?? '',
+        agentOutput: outputText,
+        agentOutputLength: outputText.length,
         monitorOutput,
         verdicts: judgeResult.verdicts,
         overallVerdict: judgeResult.overallVerdict,
@@ -245,6 +249,8 @@ for (let i = 0; i < tests.length; i++) {
         efficiency: lastRunResult?.efficiency ?? emptyEfficiency,
         trajectory: lastRunResult?.trajectory ?? emptyTrajectory,
         discoverability: computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? emptyTrajectory),
+        judge: { judgeCostUsd: 0, judgeLatencyMs: judgeMs, judgeTurns: judgeResult.verdicts.filter((v) => v.checkType === 'llm-judge').length },
+        retryAttempts: attempt,
         stopReason: lastRunResult?.stopReason ?? 'unknown',
         exitCode: lastRunResult?.exitCode ?? null,
         aborted: lastRunResult?.aborted ?? false,
