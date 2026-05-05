@@ -255,10 +255,13 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
             if (!resultEvent?.is_error) return null;
             // Budget exceeded is not a fatal error — agent still produced output
             if (resultEvent.subtype === 'error_max_budget_usd') return null;
+            // tool_use stop = agent hit maxTurns mid-tool-call, not a fatal error
+            if (resultEvent.stop_reason === 'tool_use') return null;
             return resultEvent.stop_reason ?? 'unknown error';
         },
         getStopReason: () => {
             if (resultEvent?.subtype === 'error_max_budget_usd') return 'budget_exceeded';
+            if (resultEvent?.stop_reason === 'tool_use') return 'max_turns';
             return resultEvent?.stop_reason ?? 'unknown';
         },
         getTrajectoryData: () => ({
