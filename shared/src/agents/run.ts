@@ -16,6 +16,7 @@ export interface AgentRunOptions {
     mcpConfigPath?: string;
     strictMcpConfig?: boolean;
     env?: Record<string, string>;
+    cwd?: string;
     onEvent?: (event: AgentEvent) => void;
     abortSignal?: AbortSignal;
 }
@@ -542,6 +543,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         const child = spawn(def.command, args, {
             stdio: [stdinOption, 'pipe', 'pipe'],
             env: childEnv,
+            cwd: options.cwd,
         });
 
         if (def.stdinMode === 'pipe-eof') {

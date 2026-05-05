@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
@@ -242,6 +244,49 @@ export interface JudgeOptions {
     scriptTimeoutMs?: number;
 }
 
+const DEFAULT_MAX_FILES = 20;
+const DEFAULT_MAX_FILE_SIZE = 5000;
+
+function collectWorkspaceFiles(dir: string, maxFiles: number, maxFileSize: number): string {
+    const files: Array<{ path: string; content: string }> = [];
+
+    function walk(currentDir: string): void {
+        if (files.length >= maxFiles) return;
+        try {
+            const entries = readdirSync(currentDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (files.length >= maxFiles) return;
+                const fullPath = join(currentDir, entry.name);
+
+                // Skip node_modules, .git, dist, storage
+                if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'storage') continue;
+
+                if (entry.isDirectory()) {
+                    walk(fullPath);
+                } else if (entry.isFile()) {
+                    try {
+                        const stat = statSync(fullPath);
+                        if (stat.size > maxFileSize * 2) {
+                            files.push({ path: relative(dir, fullPath), content: `[file too large: ${stat.size} bytes]` });
+                        } else {
+                            const content = readFileSync(fullPath, 'utf-8').slice(0, maxFileSize);
+                            files.push({ path: relative(dir, fullPath), content });
+                        }
+                    } catch { /* skip unreadable files */ }
+                }
+            }
+        } catch { /* skip unreadable dirs */ }
+    }
+
+    walk(dir);
+
+    if (files.length === 0) return '';
+
+    return '\n\n## Files in Workspace\n\n' + files.map((f) =>
+        `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``,
+    ).join('\n\n');
+}
+
 export interface JudgeResult {
     verdicts: CheckVerdict[];
     overallVerdict: VerdictValue;
@@ -267,8 +312,14 @@ export async function judgeAllChecks(
     }
 
     if (parsed.judgePrompt) {
+        // Include workspace files so judge can see actual code/artifacts
+        let enrichedOutput = agentOutput;
+        if (options?.workDir) {
+            enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_SIZE);
+        }
+
         const llmResult = await judgeLlm({
-            agentOutput,
+            agentOutput: enrichedOutput,
             checkpoint: parsed.judgePrompt,
             model: options?.judgeModel,
             env: options?.env,

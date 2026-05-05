@@ -1,4 +1,6 @@
 import { setTimeout } from 'node:timers/promises';
+import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
@@ -75,12 +77,17 @@ if (parseWarnings) {
     for (const w of parseWarnings) log.warning(`[parse] ${w}`);
 }
 
+// Create isolated workspace so agent cannot modify runner's own files
+const workspaceDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
+mkdirSync(workspaceDir, { recursive: true });
+log.info(`Workspace: ${workspaceDir}`);
+
 const preset = (input.initPreset ?? 'none') as PresetName;
 const initResult = runInitPreset({
     preset,
     customScript: input.initBashScript,
     mcpConfigJson: input.mcpConfigJson as Record<string, unknown>,
-    workDir: process.cwd(),
+    workDir: workspaceDir,
 });
 
 for (const msg of initResult.presetLog) {
@@ -132,6 +139,7 @@ for (let i = 0; i < tests.length; i++) {
             maxTurns,
             maxBudgetUsd: input.maxBudgetUsd,
             env: secrets,
+            cwd: workspaceDir,
             mcpConfigPath: initResult.mcpConfigPath ?? undefined,
             strictMcpConfig: initResult.strictMcpConfig,
             abortSignal: abortController.signal,
@@ -187,7 +195,7 @@ for (let i = 0; i < tests.length; i++) {
 
         // Judge all checks
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: process.cwd() });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir });
         const judgeMs = Date.now() - judgeStart;
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
@@ -247,8 +255,8 @@ for (let i = 0; i < tests.length; i++) {
     await Actor.pushData(agentResult);
     allResults.push(agentResult);
 
-    if (judgeResult.overallVerdict !== 'pass' && meta.abortOnFailure) {
-        log.warning(`abortOnFailure=true, stopping after test ${i + 1}`);
+    if (judgeResult.overallVerdict === 'fail' && meta.abortOnFailure) {
+        log.warning(`abortOnFailure=true, stopping after test ${i + 1} (verdict: fail)`);
         break;
     }
 }
