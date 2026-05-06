@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics } from '../types.js';
+import { TOOL_INPUT_MAX_CHARS } from '../constants.js';
 import { getAgentDef, buildAgentArgs } from './registry.js';
 
 export interface AgentRunOptions {
@@ -35,18 +36,18 @@ export interface AgentRunResult {
     stderr: string;
 }
 
-const EMPTY_METRICS: RunMetrics = {
+export const EMPTY_METRICS: RunMetrics = {
     inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
     totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
 };
 
-const EMPTY_EFFICIENCY: EfficiencyMetrics = {
+export const EMPTY_EFFICIENCY: EfficiencyMetrics = {
     totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
     contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
     toolExecutionMs: 0, planningTurns: 0, executionTurns: 0,
 };
 
-const EMPTY_TRAJECTORY: TrajectoryMetrics = {
+export const EMPTY_TRAJECTORY: TrajectoryMetrics = {
     toolCallCount: 0, toolCallSequence: [], uniqueToolsUsed: [], toolCallsPerTurn: 0,
     perTurnTokens: [], perTurnToolCalls: [], toolCallDetails: [],
     errorRecoveryCount: 0,
@@ -184,7 +185,7 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
                     const truncatedInput: Record<string, unknown> = {};
                     if (rawInput) {
                         for (const [k, v] of Object.entries(rawInput)) {
-                            truncatedInput[k] = typeof v === 'string' ? v.slice(0, 500) : v;
+                            truncatedInput[k] = typeof v === 'string' ? v.slice(0, TOOL_INPUT_MAX_CHARS) : v;
                         }
                     }
                     toolCallDetails.push({ tool: name, turn: apiCallNum, input: truncatedInput });

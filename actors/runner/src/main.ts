@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics, JudgeMode } from '@apify-evals/shared';
 
 interface RunnerInput {
@@ -212,24 +212,6 @@ for (let i = 0; i < tests.length; i++) {
         attempt++;
     }
 
-    const emptyMetrics = {
-        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-        totalCostUsd: 0, durationMs: 0, durationApiMs: 0, numTurns: 0, modelUsage: {},
-    };
-    const emptyEfficiency = {
-        totalContextTokens: 0, tokensPerTurn: 0, costPerTurn: 0, cacheHitRate: 0,
-        contextOutputRatio: 0, apiDurationRatio: 0, avgTurnDurationMs: 0,
-        toolExecutionMs: 0, planningTurns: 0, executionTurns: 0,
-    };
-    const emptyTrajectory = {
-        toolCallCount: 0, toolCallSequence: [] as string[], uniqueToolsUsed: [] as string[],
-        toolCallsPerTurn: 0, perTurnTokens: [] as Array<{ turn: number; input: number; output: number }>,
-        perTurnToolCalls: [] as Array<{ turn: number; tools: string[] }>,
-        toolCallDetails: [] as Array<{ tool: string; turn: number; input: Record<string, unknown> }>,
-        errorRecoveryCount: 0, filesCreated: [] as string[], filesModified: [] as string[],
-        commandsExecuted: [] as string[], mcpToolsUsed: [] as string[],
-    };
-
     const outputText = lastRunResult?.text ?? '';
     const agentResult: AgentResult = {
         agent,
@@ -243,10 +225,10 @@ for (let i = 0; i < tests.length; i++) {
         monitorOutput,
         verdicts: judgeResult.verdicts,
         overallVerdict: judgeResult.overallVerdict,
-        metrics: lastRunResult?.metrics ?? emptyMetrics,
-        efficiency: lastRunResult?.efficiency ?? emptyEfficiency,
-        trajectory: lastRunResult?.trajectory ?? emptyTrajectory,
-        discoverability: computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? emptyTrajectory),
+        metrics: lastRunResult?.metrics ?? EMPTY_METRICS,
+        efficiency: lastRunResult?.efficiency ?? EMPTY_EFFICIENCY,
+        trajectory: lastRunResult?.trajectory ?? EMPTY_TRAJECTORY,
+        discoverability: computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? EMPTY_TRAJECTORY),
         judge: { judgeCostUsd: 0, judgeLatencyMs: judgeMs, judgeTurns: judgeResult.verdicts.filter((v) => v.checkType === 'llm-judge').length },
         retryAttempts: attempt,
         stopReason: lastRunResult?.stopReason ?? 'unknown',

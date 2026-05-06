@@ -6,6 +6,7 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
+import { SCRIPT_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_SIZE } from './constants.js';
 import { judgeLlm as judgeLlmCli } from './agents/claude.js';
 import { judgeLlmSdk, hasSdkApiKey } from './agents/judge-sdk.js';
 import type { JudgeLlmResult } from './agents/claude.js';
@@ -124,7 +125,7 @@ export interface ScriptJudgeOptions {
 }
 
 function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions): CheckVerdict {
-    const timeoutMs = options?.timeoutMs ?? 60_000;
+    const timeoutMs = options?.timeoutMs ?? SCRIPT_TIMEOUT_MS;
     try {
         const stdout = execSync(script, {
             input: agentOutput,
@@ -134,7 +135,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             shell: '/bin/bash',
             env: options?.env ? { ...process.env, ...options.env } : process.env,
         });
-        const evidence = stdout.toString().trim().slice(0, 1000) || 'Script exited with code 0';
+        const evidence = stdout.toString().trim().slice(0, EVIDENCE_MAX_CHARS) || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence, confidence: 1.0 };
     } catch (err: unknown) {
         const error = err as { status?: number; stdout?: Buffer; stderr?: Buffer; message?: string };
@@ -258,8 +259,8 @@ export interface JudgeOptions {
     scriptTimeoutMs?: number;
 }
 
-const DEFAULT_MAX_FILES = 20;
-const DEFAULT_MAX_FILE_SIZE = 5000;
+const DEFAULT_MAX_FILES = MAX_WORKSPACE_FILES;
+const DEFAULT_MAX_FILE_SIZE = MAX_WORKSPACE_FILE_SIZE;
 
 function collectWorkspaceFiles(dir: string, maxFiles: number, maxFileSize: number): string {
     const files: Array<{ path: string; content: string }> = [];
@@ -368,13 +369,4 @@ function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
     if (verdicts.some((v) => v.verdict === 'fail')) return 'fail';
     if (verdicts.some((v) => v.verdict === 'unclear')) return 'unclear';
     return 'pass';
-}
-
-// Backwards-compatible single-verdict API
-export async function judgeCheckpoint(
-    agentOutput: string,
-    checkpoint: string,
-    options?: JudgeOptions,
-): Promise<JudgeResult> {
-    return judgeAllChecks(agentOutput, checkpoint, options);
 }

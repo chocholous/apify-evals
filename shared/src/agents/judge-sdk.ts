@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+import { JUDGE_MODEL, JUDGE_MAX_TOKENS } from '../constants.js';
 import type { JudgeLlmResult } from './claude.js';
 
 const JUDGE_TOOL: Anthropic.Messages.Tool = {
@@ -53,8 +54,8 @@ function getApiKey(env?: Record<string, string>): string | undefined {
 async function judgeLlmSdkOnce(client: Anthropic, options: SdkJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
     try {
         const response = await client.messages.create({
-            model: options.model ?? 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
+            model: options.model ?? JUDGE_MODEL,
+            max_tokens: JUDGE_MAX_TOKENS,
             tools: [JUDGE_TOOL],
             tool_choice: { type: 'tool', name: 'submit_verdict' },
             messages: [{ role: 'user', content: buildPrompt(options.agentOutput, options.checkpoint) }],
