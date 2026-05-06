@@ -1,0 +1,26 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "Agent Evals Runner Output",
+    "properties": {
+        "results": {
+            "type": "string",
+            "title": "Eval Results",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        },
+        "conversationLog": {
+            "type": "string",
+            "title": "Conversation Log",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/CONVERSATION-LOG"
+        },
+        "judgeLog": {
+            "type": "string",
+            "title": "Judge Log",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/JUDGE-LOG"
+        },
+        "otelTrace": {
+            "type": "string",
+            "title": "OTel Trace (OTLP JSON)",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OTEL-TRACE"
+        }
+    }
+}

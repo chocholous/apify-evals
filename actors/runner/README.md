@@ -108,6 +108,48 @@ fi
 The response should clearly explain what was computed and why.
 ```
 
+## Advanced frontmatter
+
+Beyond `name`, `description`, and `abortOnFailure`, scenarios support additional YAML fields:
+
+```yaml
+---
+name: tool-discovery-eval
+description: Test agent's ability to find and use MCP tools
+abortOnFailure: false
+language: TypeScript
+template: ts-empty
+expectedTools:
+  required: [mcp__apify__call-actor, Bash]
+  forbidden: [mcp__github__search]
+  optional: [Read, Write]
+actorSpec:
+  name: my-scraper
+  crawler: CheerioCrawler
+  expectedOutput:
+    fields: [title, url, price]
+---
+```
+
+| Field | Purpose |
+|-------|---------|
+| `language` | Injected into system prompt ("Use TypeScript as the programming language") |
+| `template` | Injected into system prompt ("Use the ts-empty template") |
+| `expectedTools` | Measures tool discoverability — `discoverabilityScore` in output |
+| `actorSpec` | Actor development specs injected into system prompt |
+
+## Judge mode
+
+Control how the LLM judge runs via the `judgeMode` input:
+
+| Mode | How it works | When to use |
+|------|-------------|-------------|
+| `auto` (default) | Uses Anthropic SDK if `ANTHROPIC_API_KEY` is in env variables, falls back to `claude -p` CLI | Recommended — fastest available option |
+| `cli` | Always uses `claude -p --json-schema` | When you only have an OAuth token |
+| `sdk` | Always uses `@anthropic-ai/sdk` directly | When you want consistent fast judging (~5x faster) |
+
+The SDK judge uses `tool_use` with Claude Haiku for structured verdicts. Deterministic checks (contains, regex, json-schema, script) are unaffected by judge mode.
+
 ## Init presets
 
 Presets configure what tools the agent has access to:
@@ -204,7 +246,15 @@ Each test produces one dataset item with full results, metrics, and trajectory:
 }
 ```
 
-Full conversation logs are stored in the Key-Value Store (`CONVERSATION-LOG`, `JUDGE-LOG`) with secrets automatically masked.
+Full conversation logs are stored in the Key-Value Store:
+
+| Key | Content | Format |
+|-----|---------|--------|
+| `CONVERSATION-LOG` | Agent's raw event stream (secrets masked) | NDJSON |
+| `JUDGE-LOG` | Checkpoint evaluation details | NDJSON |
+| `OTEL-TRACE` | OpenTelemetry trace with GenAI semantic conventions | OTLP JSON |
+
+The OTel trace uses standard `gen_ai.*` attributes (tokens, tool calls, evaluations) and can be loaded into [AgentPrism](https://github.com/evilmartians/agent-prism), Jaeger, Langfuse, or any OTLP-compatible viewer.
 
 ## Cost estimation
 
@@ -222,3 +272,22 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 - Set `abortOnFailure: true` when tests build on each other (test 2 depends on test 1)
 - Use `script:` checkpoints to verify side effects (files created, API state changed)
 - The Custom Init Script can install tools, download validators, or set up test fixtures
+
+## Scenario cookbook
+
+The repo includes 21 ready-to-use scenarios in the [`scenarios/`](../../scenarios/) directory:
+
+| Scenario | What it tests |
+|----------|--------------|
+| `smoke-test.md` | Simplest possible test — one question, one checkpoint |
+| `multi-check-demo.md` | All checkpoint types combined (contains, regex, json-schema, script, judge) |
+| `script-validation.md` | Complex bash script validation with subsection format |
+| `us1-ai-judge.md` | LLM judge with nuanced evaluation criteria |
+| `us5-multi-step.md` | Multi-test scenario with `abortOnFailure` |
+| `us6-env-vars.md` | Environment variable injection and secret handling |
+| `us7-budget-abort.md` | Budget limits and graceful abort |
+| `trajectory-test.md` | Rich trajectory data (tool calls, file operations) |
+| `skill-injection.md` | Injecting CLAUDE.md/skills into agent workspace |
+| `actor-dev/cheerio-scraper.md` | Full Apify Actor development evaluation |
+
+Copy any scenario's content into the "Testing Scenario" input field to get started quickly.

@@ -16,6 +16,12 @@ let globalProvider: NodeTracerProvider | null = null;
 let globalExporter: BufferSpanExporter | null = null;
 
 export function initOtel(): Tracer {
+    // Clean up previous provider to allow re-initialization (e.g., in tests)
+    if (globalProvider) {
+        trace.disable();
+        globalProvider = null;
+        globalExporter = null;
+    }
     globalExporter = new BufferSpanExporter();
     globalProvider = new NodeTracerProvider({
         resource: resourceFromAttributes({

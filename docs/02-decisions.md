@@ -264,3 +264,64 @@ Jeden `Dockerfile` v rootu repa instaluje všechny CLI nástroje (Claude Code, C
 **Výhled:** Metamorph by se hodil pro Orchestrator (Fáze 3) jako dispatcher do per-agent Runner Actors, pokud by velikost fat image byla problém. Zatím není potřeba.
 
 **Verzování CLI:** Image instaluje latest verze. Pokud uživatel potřebuje specifickou verzi agenta, řeší to v `initBashScript` (odinstalace + instalace verzované verze).
+
+---
+
+## D16: LLM Judge — SDK vs CLI (judgeMode)
+
+### Rozhodnutí: Tři režimy s auto-detekcí
+
+- `auto` (default): Pokud `ANTHROPIC_API_KEY` v env → SDK (`@anthropic-ai/sdk` s `tool_use`), jinak CLI (`claude -p --json-schema`)
+- `cli`: Vždy CLI (funguje s OAuth tokenem)
+- `sdk`: Vždy SDK (vyžaduje API klíč)
+
+### Zamítnuto: Pouze CLI, pouze SDK
+
+**Proč oba:**
+
+| Kritérium | CLI judge | SDK judge |
+|-----------|----------|-----------|
+| Latence | ~3-5s (CLI startup + internal tool call) | ~0.5-1s (přímé API volání) |
+| Auth | OAuth token NEBO API key | Jen API key |
+| Cost tracking | Nelze (CLI nereportuje) | Ano (`response.usage`) |
+| Závislost | Žádná (claude CLI v Dockerfile) | `@anthropic-ai/sdk` (~1.5MB) |
+| Retry | Manuální (spawn → parse → retry) | SDK built-in retry |
+
+**Klíčový argument:** Eval Runner na Apify platformě typicky má API klíč (uživatel ho předá v `envVariables`). SDK je 5× rychlejší a umožňuje měřit judge cost. CLI režim zůstává jako fallback pro lokální vývoj s OAuth.
+
+**Spike reference:** S3 (`spikes/s3-llm-judge.ts`) ověřil SDK `tool_use` pattern. Produkční implementace v `shared/src/agents/judge-sdk.ts`.
+
+---
+
+## D17: OTel jako datový formát (ne platforma)
+
+### Rozhodnutí: OTel GenAI semantic conventions jako standardizovaný formát v KV store
+
+### Zamítnuto: Langfuse, Promptfoo, vlastní formát, žádný tracing
+
+**Research kontext:** Vyhodnotili jsme 10+ frameworků/platforem:
+
+| Alternativa | Proč zamítnuto |
+|-------------|---------------|
+| **Promptfoo** | 1179 deps, nahrazuje náš runner, OpenAI acquisition (březen 2026) |
+| **Langfuse** | Vyžaduje server (self-hosted: 6 kontejnerů), duplikuje data z Apify datasetu |
+| **Langfuse Cloud** | Vendor dependency, data outside Apify |
+| **autoevals** (Braintrust) | Náš checkpoint systém je silnější (filesystem access, bash scripts) |
+| **Vlastní JSON formát** | Žádná interoperabilita s existujícími viewery |
+
+**Proč OTel:**
+
+1. **Minimální deps:** `@opentelemetry/api` (0 deps) + `sdk-trace-base` + `sdk-trace-node` = ~1.7MB, žádné native binaries
+2. **Žádný server:** `BufferSpanExporter` → OTLP JSON do Apify KV store
+3. **Standardní formát:** ~80% `AgentResult` polí má přímý mapping na `gen_ai.*` atributy
+4. **Future-proof interop:** OTLP JSON lze nahrát do AgentPrism, Langfuse OTLP endpoint, Jaeger, Grafana Tempo — bez změny kódu
+5. **Žádný lock-in:** Open standard, remove = smazat 30 řádků instrumentace
+
+**GenAI Semantic Conventions stav:** Development (ne stable), ale shipping u Vercel AI SDK, Datadog, LangChain. Pinujeme na konkrétní verzi `@opentelemetry/semantic-conventions`.
+
+**Trace struktura:**
+```
+scenario_run → test_N → invoke_agent (gen_ai.usage.*, tool events) → judge_evaluation (gen_ai.evaluation.*)
+```
+
+**Implementace:** `shared/src/otel.ts` (setup + helpers), `shared/src/otel-exporter.ts` (BufferSpanExporter + OTLP JSON serialization). Runner wrappuje existující loop do spanů, výstup do `OTEL-TRACE` KV klíč.

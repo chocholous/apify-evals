@@ -7,7 +7,7 @@ TypeScript monorepo se dvěma Apify Actory pro evaluaci AI agentů (Claude Code,
 ## Architektura
 
 Monorepo s npm workspaces:
-- `shared/` — sdílená knihovna (types, scenario-parser, agent adaptery, judge, metriky)
+- `shared/` — sdílená knihovna (types, scenario-parser, agent adaptery, judge, metriky, OTel instrumentace)
 - `actors/runner/` — Actor #1: spustí jeden eval scénář s jedním agentem
 - `actors/orchestrator/` — Actor #2: orchestruje více scénářů (Fáze 3)
 
@@ -170,12 +170,45 @@ Presets konfigurují **prostředí agenta** (ne vyhodnocení):
 
 ## LLM Judge
 
-Judge přes `claude -p --json-schema` (ne Anthropic SDK):
+Judge má dva backendy, vybraný přes `judgeMode` input (`auto` | `cli` | `sdk`):
+
+### CLI judge (výchozí fallback)
+- `claude -p --json-schema` subprocess
 - Model: `claude-haiku-4-5-20251001`
 - Vyžaduje `--max-turns 3` (interní tool call pro json-schema)
 - Structured output v `result.structured_output` field
 - Žádný API klíč potřeba (OAuth/subscription stačí)
-- Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
+- Latence: ~3-5s
+
+### SDK judge (preferovaný pokud API key dostupný)
+- `@anthropic-ai/sdk` s `tool_use` pattern (`submit_verdict` tool)
+- Model: `claude-haiku-4-5-20251001`
+- Vyžaduje `ANTHROPIC_API_KEY` v `envVariables`
+- Latence: ~0.5-1s (~5× rychlejší)
+- Implementace: `shared/src/agents/judge-sdk.ts`
+
+### Auto-detekce (`judgeMode: 'auto'`)
+Funkce `resolveJudgeFn()` v `judge.ts`: pokud `ANTHROPIC_API_KEY` existuje v env → SDK, jinak → CLI.
+
+Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
+
+## OTel instrumentace
+
+Runner produkuje OpenTelemetry trace v `OTEL-TRACE` KV klíč (OTLP JSON formát):
+
+```
+scenario_run
+├── gen_ai.workflow.name, gen_ai.provider.name, gen_ai.request.model
+├── test_0
+│   ├── invoke_agent (gen_ai.usage.*, tool_call events)
+│   └── judge_evaluation (gen_ai.evaluation.* events per checkpoint)
+└── test_1 ...
+```
+
+- GenAI Semantic Conventions (`gen_ai.*`) pro ~80% atributů, custom `eval.*` pro zbytek
+- `BufferSpanExporter` → žádný server, OTLP JSON do KV store
+- Kompatibilní s AgentPrism, Langfuse OTLP endpoint, Jaeger
+- Implementace: `shared/src/otel.ts`, `shared/src/otel-exporter.ts`
 
 ## Budget (--max-budget-usd)
 
@@ -189,7 +222,8 @@ Deploy: `apify push --dir actors/runner`
 
 ## Testy
 
-- **Unit testy** (`shared/src/__tests__/*.test.ts`): scenario-parser, judge, metrics, log-masker, init-presets
+- **Unit testy** (`shared/src/__tests__/*.test.ts`): scenario-parser, judge, judge-mode, metrics, log-masker, init-presets, OTel
+- **Validation testy**: scenario-files (parsuje všech 21 scénářů z `scenarios/`), example-inputs (validuje 9 example JSON proti schema)
 - **Integrační testy** (`shared/src/__tests__/integration*.ts`): spustí reálného agenta, ověří metrics + trajectory + judging
 - Spuštění: `cd shared && npx vitest run` (unit) nebo `npx vitest run src/__tests__/integration*` (integration, pomalé ~2min)
 
