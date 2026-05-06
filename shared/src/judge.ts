@@ -6,7 +6,20 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
-import { judgeLlm } from './agents/claude.js';
+import { judgeLlm as judgeLlmCli } from './agents/claude.js';
+import { judgeLlmSdk, hasSdkApiKey } from './agents/judge-sdk.js';
+import type { JudgeLlmResult } from './agents/claude.js';
+
+export type JudgeMode = 'auto' | 'cli' | 'sdk';
+
+type JudgeFn = (options: { agentOutput: string; checkpoint: string; model?: string; maxRetries?: number; env?: Record<string, string> }) => Promise<JudgeLlmResult | null>;
+
+function resolveJudgeFn(mode: JudgeMode | undefined, env?: Record<string, string>): JudgeFn {
+    const effectiveMode = mode ?? 'auto';
+    if (effectiveMode === 'sdk') return judgeLlmSdk;
+    if (effectiveMode === 'cli') return judgeLlmCli;
+    return hasSdkApiKey(env) ? judgeLlmSdk : judgeLlmCli;
+}
 
 export interface CheckpointSpec {
     type: CheckType;
@@ -240,6 +253,7 @@ function judgeDeterministicCheck(agentOutput: string, spec: CheckpointSpec, opti
 export interface JudgeOptions {
     env?: Record<string, string>;
     judgeModel?: string;
+    judgeMode?: JudgeMode;
     workDir?: string;
     scriptTimeoutMs?: number;
 }
@@ -318,7 +332,8 @@ export async function judgeAllChecks(
             enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_SIZE);
         }
 
-        const llmResult = await judgeLlm({
+        const judgeFn = resolveJudgeFn(options?.judgeMode, options?.env);
+        const llmResult = await judgeFn({
             agentOutput: enrichedOutput,
             checkpoint: parsed.judgePrompt,
             model: options?.judgeModel,

@@ -3,8 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics, JudgeMode } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -18,6 +18,7 @@ interface RunnerInput {
     initPreset?: string;
     initBashScript?: string;
     mcpConfigJson?: Record<string, unknown>;
+    judgeMode?: JudgeMode;
 }
 
 function computeDiscoverability(expected: ExpectedTools | undefined, trajectory: TrajectoryMetrics): DiscoverabilityMetrics | null {
@@ -71,6 +72,15 @@ const secrets = input.envVariables ?? {};
 const agent = input.agent ?? 'claude-code';
 const maxRetries = input.maxRetries ?? 0;
 const maxTurns = input.maxTurns ?? 10;
+const judgeMode = input.judgeMode ?? 'auto';
+
+const tracer = initOtel();
+const scenarioSpan = startScenarioSpan(tracer, {
+    scenarioName: meta.name,
+    agent,
+    model: input.model ?? 'default',
+    testsTotal: tests.length,
+});
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
 if (parseWarnings) {
@@ -101,6 +111,7 @@ const allJudgeLines: string[] = [];
 for (let i = 0; i < tests.length; i++) {
     const test = tests[i];
     log.info(`--- Test ${i + 1}/${tests.length}: "${test.test.slice(0, 80)}" ---`);
+    const testSpan = startTestSpan(tracer, { testIndex: i, prompt: test.test });
 
     let judgeResult: JudgeResult = { verdicts: [], overallVerdict: 'fail' };
     let lastRunResult: AgentRunResult | null = null;
@@ -132,6 +143,7 @@ for (let i = 0; i < tests.length; i++) {
             systemPrompt += '\n\n' + specParts.join('\n');
         }
 
+        const agentSpan = startAgentSpan(tracer, agent);
         const result = await runAgent({
             agent,
             prompt: test.test,
@@ -145,6 +157,7 @@ for (let i = 0; i < tests.length; i++) {
             strictMcpConfig: initResult.strictMcpConfig,
             abortSignal: abortController.signal,
         });
+        endAgentSpan(agentSpan, result);
 
         lastRunResult = result;
 
@@ -195,9 +208,11 @@ for (let i = 0; i < tests.length; i++) {
         }
 
         // Judge all checks
+        const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir, judgeMode });
         judgeMs = Date.now() - judgeStart;
+        endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
             checkpoint: test.checkpoint,
@@ -258,6 +273,7 @@ for (let i = 0; i < tests.length; i++) {
         error: lastRunResult?.error ?? null,
     };
 
+    endTestSpan(testSpan, agentResult.overallVerdict);
     await Actor.pushData(agentResult);
     allResults.push(agentResult);
 
@@ -280,5 +296,12 @@ const unclear = allResults.filter((r) => r.overallVerdict === 'unclear').length;
 const totalCost = allResults.reduce((sum, r) => sum + r.metrics.totalCostUsd, 0);
 
 log.info(`\n=== Results: ${passed} passed, ${failed} failed, ${unclear} unclear | Cost: ${formatCost(totalCost)} ===`);
+
+endScenarioSpan(scenarioSpan, passed, failed, totalCost);
+const otelTrace = await flushOtel();
+if (otelTrace) {
+    await Actor.setValue('OTEL-TRACE', otelTrace, { contentType: 'application/json' });
+    log.info(`OTel trace saved (${otelTrace.resourceSpans[0]?.scopeSpans[0]?.spans.length ?? 0} spans)`);
+}
 
 await Actor.exit();
