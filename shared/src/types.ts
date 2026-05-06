@@ -4,25 +4,11 @@ export interface ExpectedTools {
     optional: string[];
 }
 
-export interface ActorSpec {
-    name?: string;
-    description?: string;
-    crawler?: string;
-    expectedOutput?: {
-        fields?: string[];
-        minItems?: number;
-    };
-    [key: string]: unknown;
-}
-
 export interface ScenarioMeta {
     name: string;
     description: string;
     abortOnFailure: boolean;
     expectedTools?: ExpectedTools;
-    language?: string;
-    template?: string;
-    actorSpec?: ActorSpec;
 }
 
 export interface ExpectedToolCall {

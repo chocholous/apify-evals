@@ -10,7 +10,7 @@ export { runInitPreset } from './init-presets.js';
 export { initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan } from './otel.js';
 export { spansToOtlpJson, OtlpJsonFileExporter, BufferSpanExporter } from './otel-exporter.js';
 
-export type { ParsedScenario, TestCase, ScenarioMeta, ActorSpec, ExpectedToolCall } from './types.js';
+export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
 export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, DiscoverabilityMetrics, JudgeMetrics, ExpectedTools, AgentEvent, ClaudeStreamEvent, ModelUsage, AgentType } from './types.js';
 export type { ClaudeRunOptions, ClaudeRunResult, ClaudeJudgeOptions, JudgeLlmResult } from './agents/claude.js';
 export type { SdkJudgeOptions } from './agents/judge-sdk.js';

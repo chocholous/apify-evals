@@ -99,7 +99,7 @@ describe('computeDiscoverability', () => {
     });
 });
 
-describe('parseScenario — expectedTools and actorSpec', () => {
+describe('parseScenario — expectedTools', () => {
     it('parses expectedTools from frontmatter', () => {
         const md = `---
 name: tools-test
@@ -122,35 +122,7 @@ contains: done
         expect(result.meta.expectedTools!.optional).toEqual(['Read']);
     });
 
-    it('parses actorSpec from frontmatter', () => {
-        const md = `---
-name: actor-spec-test
-language: typescript
-template: ts-empty
-actorSpec:
-  name: my-scraper
-  crawler: CheerioCrawler
-  expectedOutput:
-    fields: [name, price]
-    minItems: 5
----
-
-## Test
-Build an Actor.
-
-## Checkpoint
-contains: done
-`;
-        const result = parseScenario(md);
-        expect(result.meta.language).toBe('typescript');
-        expect(result.meta.template).toBe('ts-empty');
-        expect(result.meta.actorSpec).toBeDefined();
-        expect(result.meta.actorSpec!.name).toBe('my-scraper');
-        expect(result.meta.actorSpec!.crawler).toBe('CheerioCrawler');
-        expect(result.meta.actorSpec!.expectedOutput?.fields).toEqual(['name', 'price']);
-    });
-
-    it('scenario without expectedTools/actorSpec = undefined', () => {
+    it('scenario without expectedTools = undefined', () => {
         const md = `---
 name: plain
 ---
@@ -163,8 +135,6 @@ contains: hi
 `;
         const result = parseScenario(md);
         expect(result.meta.expectedTools).toBeUndefined();
-        expect(result.meta.actorSpec).toBeUndefined();
-        expect(result.meta.language).toBeUndefined();
     });
 });
 

@@ -123,25 +123,8 @@ for (let i = 0; i < tests.length; i++) {
         if (attempt > 0) log.info(`  Retry ${attempt}/${maxRetries}`);
         monitorOutput = null;
 
-        let systemPrompt = input.systemPrompt
+        const systemPrompt = input.systemPrompt
             ?? 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
-
-        // Inject scenario-level configuration into system prompt
-        const specParts: string[] = [];
-        if (meta.language) specParts.push(`Use ${meta.language} as the programming language.`);
-        if (meta.template) specParts.push(`Use the "${meta.template}" template as a starting point.`);
-        if (meta.actorSpec) {
-            const spec = meta.actorSpec;
-            if (spec.name) specParts.push(`The Actor should be named "${spec.name}".`);
-            if (spec.crawler) specParts.push(`Use ${spec.crawler} as the crawler.`);
-            if (spec.expectedOutput?.fields) {
-                specParts.push(`Output dataset items must have fields: ${spec.expectedOutput.fields.join(', ')}.`);
-            }
-            if (spec.description) specParts.push(`Actor description: ${spec.description}`);
-        }
-        if (specParts.length > 0) {
-            systemPrompt += '\n\n' + specParts.join('\n');
-        }
 
         const agentSpan = startAgentSpan(tracer, agent);
         const result = await runAgent({

@@ -108,35 +108,30 @@ fi
 The response should clearly explain what was computed and why.
 ```
 
-## Advanced frontmatter
+## Expected tools (discoverability scoring)
 
-Beyond `name`, `description`, and `abortOnFailure`, scenarios support additional YAML fields:
+Scenarios can declare which tools the agent should (or shouldn't) use. This doesn't affect the agent — it's used after the run to compute a `discoverabilityScore` in the output:
 
 ```yaml
 ---
 name: tool-discovery-eval
 description: Test agent's ability to find and use MCP tools
-abortOnFailure: false
-language: TypeScript
-template: ts-empty
 expectedTools:
   required: [mcp__apify__call-actor, Bash]
   forbidden: [mcp__github__search]
   optional: [Read, Write]
-actorSpec:
-  name: my-scraper
-  crawler: CheerioCrawler
-  expectedOutput:
-    fields: [title, url, price]
 ---
 ```
 
-| Field | Purpose |
+| Field | Meaning |
 |-------|---------|
-| `language` | Injected into system prompt ("Use TypeScript as the programming language") |
-| `template` | Injected into system prompt ("Use the ts-empty template") |
-| `expectedTools` | Measures tool discoverability — `discoverabilityScore` in output |
-| `actorSpec` | Actor development specs injected into system prompt |
+| `required` | Agent must use these tools. Missing = lower score |
+| `forbidden` | Agent must NOT use these. Used = score 0 |
+| `optional` | Allowed but not required. Not penalized either way |
+
+Output includes `discoverability.discoverabilityScore` (0–1) and `discoverability.missingTools` / `forbiddenToolsUsed` arrays.
+
+For task-specific instructions (language, framework, constraints), put them directly in the `## Test` prompt or in the `systemPrompt` input.
 
 ## Judge mode
 
