@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -56,11 +56,10 @@ export const EMPTY_TRAJECTORY: TrajectoryMetrics = {
 
 // --- Bash command file-op detection ---
 
-const REDIRECT_PATTERN = /(?:^|[;&|]\s*)(?:echo|printf|cat)\s+.*?>\s*(\S+)/g;
 const TEE_PATTERN = /\btee\s+(?:-a\s+)?(\S+)/g;
 const CP_MV_PATTERN = /\b(?:cp|mv)\s+.*?\s+(\S+)\s*$/gm;
 
-function extractFileOpsFromCommand(cmd: string): { created: string[]; modified: string[] } {
+export function extractFileOpsFromCommand(cmd: string): { created: string[]; modified: string[] } {
     const created: string[] = [];
     const modified: string[] = [];
 
@@ -95,9 +94,9 @@ function scanFilesystemChanges(markerPath: string, scanDirs: string[]): { create
     const files: string[] = [];
     for (const dir of scanDirs) {
         try {
-            const output = execSync(
-                `find ${dir} -newer ${markerPath} -type f 2>/dev/null || true`,
-                { encoding: 'utf-8', timeout: 5000 },
+            const output = execFileSync(
+                'find', [dir, '-newer', markerPath, '-type', 'f'],
+                { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
             );
             for (const line of output.split('\n')) {
                 const trimmed = line.trim();
@@ -127,7 +126,7 @@ interface ParsedStream {
     };
 }
 
-function parseClaudeStream(events: AgentEvent[]): ParsedStream {
+export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
     let text = '';
     let resultEvent: AgentEvent | null = null;
     const toolCalls: string[] = [];
@@ -273,7 +272,7 @@ function parseClaudeStream(events: AgentEvent[]): ParsedStream {
     };
 }
 
-function parseCodexStream(events: AgentEvent[]): ParsedStream {
+export function parseCodexStream(events: AgentEvent[]): ParsedStream {
     let text = '';
     let lastUsage: Record<string, number> | null = null;
     let error: string | null = null;
@@ -369,7 +368,7 @@ function parseCodexStream(events: AgentEvent[]): ParsedStream {
     };
 }
 
-function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
+export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
     let text = '';
     let totalCost = 0;
     let totalInput = 0;

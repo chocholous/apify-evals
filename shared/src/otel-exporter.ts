@@ -1,6 +1,5 @@
 import type { SpanExporter, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { ExportResultCode, type ExportResult } from '@opentelemetry/core';
-import { writeFileSync, appendFileSync } from 'node:fs';
 
 interface OtlpAttribute {
     key: string;
@@ -41,7 +40,7 @@ function spanToOtlp(span: ReadableSpan) {
         };
     });
 
-    const parentCtx = (span as unknown as Record<string, unknown>).parentSpanContext as { spanId?: string } | undefined;
+    const parentCtx = span.parentSpanContext;
     return {
         traceId: span.spanContext().traceId,
         spanId: span.spanContext().spanId,
@@ -84,35 +83,6 @@ export function spansToOtlpJson(spans: ReadableSpan[]): OtlpJsonData {
             }],
         }],
     };
-}
-
-export class OtlpJsonFileExporter implements SpanExporter {
-    private filePath: string;
-    private initialized = false;
-
-    constructor(filePath: string) {
-        this.filePath = filePath;
-    }
-
-    export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
-        try {
-            const data = spansToOtlpJson(spans);
-            const line = JSON.stringify(data) + '\n';
-            if (!this.initialized) {
-                writeFileSync(this.filePath, line);
-                this.initialized = true;
-            } else {
-                appendFileSync(this.filePath, line);
-            }
-            resultCallback({ code: ExportResultCode.SUCCESS });
-        } catch {
-            resultCallback({ code: ExportResultCode.FAILED });
-        }
-    }
-
-    shutdown(): Promise<void> {
-        return Promise.resolve();
-    }
 }
 
 export class BufferSpanExporter implements SpanExporter {

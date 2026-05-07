@@ -216,6 +216,3 @@ export interface AgentEvent {
     // Generic timestamp
     timestamp?: number;
 }
-
-// Keep old name as alias for backward compat in imports
-export type ClaudeStreamEvent = AgentEvent;

@@ -111,13 +111,6 @@ function parseCheckpointLine(line: string): CheckpointSpec | null {
     return null;
 }
 
-// Keep for backwards compatibility
-export function parseCheckpoint(checkpoint: string): CheckpointSpec {
-    const line = parseCheckpointLine(checkpoint);
-    if (line) return line;
-    return { type: 'llm-judge', value: checkpoint };
-}
-
 export interface ScriptJudgeOptions {
     workDir?: string;
     timeoutMs?: number;

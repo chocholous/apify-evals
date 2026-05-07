@@ -1,38 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { parseCheckpoint, parseCheckpointSection, judgeAllChecks } from '../judge.js';
-
-describe('parseCheckpoint (legacy single-line)', () => {
-    it('detects contains: prefix', () => {
-        const spec = parseCheckpoint('contains: Paris');
-        expect(spec.type).toBe('contains');
-        expect(spec.value).toBe('Paris');
-    });
-
-    it('detects regex: prefix', () => {
-        const spec = parseCheckpoint('regex: \\d{4}');
-        expect(spec.type).toBe('regex');
-        expect(spec.value).toBe('\\d{4}');
-    });
-
-    it('detects json-schema: prefix', () => {
-        const spec = parseCheckpoint('json-schema: {}');
-        expect(spec.type).toBe('json-schema');
-        expect(spec.value).toBe('{}');
-    });
-
-    it('detects script: prefix', () => {
-        const spec = parseCheckpoint('script: ./check.sh');
-        expect(spec.type).toBe('script');
-        expect(spec.value).toBe('./check.sh');
-    });
-
-    it('defaults to llm-judge for plain text', () => {
-        const spec = parseCheckpoint('The answer mentions Paris as the capital.');
-        expect(spec.type).toBe('llm-judge');
-        expect(spec.value).toBe('The answer mentions Paris as the capital.');
-    });
-});
+import { parseCheckpointSection, judgeAllChecks } from '../judge.js';
 
 describe('parseCheckpointSection — flat format', () => {
     it('parses single deterministic check', () => {
