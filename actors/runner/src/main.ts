@@ -259,10 +259,14 @@ for (let i = 0; i < tests.length; i++) {
 
 // Store logs
 const maskedAgentLog = maskSecrets(allEventLines.join('\n'), secrets);
-await Actor.setValue('CONVERSATION-LOG', maskedAgentLog, { contentType: 'text/plain' });
+if (maskedAgentLog) {
+    await Actor.setValue('CONVERSATION-LOG', maskedAgentLog, { contentType: 'text/plain' });
+}
 
 const maskedJudgeLog = maskSecrets(allJudgeLines.join('\n'), secrets);
-await Actor.setValue('JUDGE-LOG', maskedJudgeLog, { contentType: 'text/plain' });
+if (maskedJudgeLog) {
+    await Actor.setValue('JUDGE-LOG', maskedJudgeLog, { contentType: 'text/plain' });
+}
 
 const passed = allResults.filter((r) => r.overallVerdict === 'pass').length;
 const failed = allResults.filter((r) => r.overallVerdict === 'fail').length;
@@ -273,8 +277,8 @@ log.info(`\n=== Results: ${passed} passed, ${failed} failed, ${unclear} unclear 
 
 endScenarioSpan(scenarioSpan, passed, failed, totalCost);
 const otelTrace = await flushOtel();
-if (otelTrace) {
-    await Actor.setValue('OTEL-TRACE', otelTrace, { contentType: 'application/json' });
+if (otelTrace && typeof otelTrace === 'object') {
+    await Actor.setValue('OTEL-TRACE', JSON.stringify(otelTrace), { contentType: 'application/json' });
     log.info(`OTel trace saved (${otelTrace.resourceSpans[0]?.scopeSpans[0]?.spans.length ?? 0} spans)`);
 }
 
