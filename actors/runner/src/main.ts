@@ -134,6 +134,7 @@ for (let i = 0; i < tests.length; i++) {
         const systemPrompt = input.systemPrompt
             ?? 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
 
+        let turnCount = 0;
         const agentSpan = startAgentSpan(tracer, agent);
         const result = await runAgent({
             agent,
@@ -148,6 +149,17 @@ for (let i = 0; i < tests.length; i++) {
             strictMcpConfig: initResult.strictMcpConfig,
             pluginDirs: pluginDirs.length > 0 ? pluginDirs : undefined,
             abortSignal: abortController.signal,
+            onEvent: (event) => {
+                if (event.type === 'assistant' && event.message?.content) {
+                    turnCount++;
+                    const tools = event.message.content
+                        .filter((c) => c.type === 'tool_use' && c.name)
+                        .map((c) => c.name);
+                    if (tools.length > 0) {
+                        log.info(`    [turn ${turnCount}] ${tools.join(', ')}`);
+                    }
+                }
+            },
         });
         endAgentSpan(agentSpan, result);
 
