@@ -350,11 +350,10 @@ export async function judgeAllChecks(
     }
 
     if (parsed.judgePrompt) {
-        // Include workspace files and conversation log so judge can verify data and tool usage
         let enrichedOutput = agentOutput;
-        if (options?.workDir) {
-            enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_SIZE);
-        }
+        enrichedOutput += '\n\n## How to verify\n';
+        enrichedOutput += '- Data files: agent saves actor output to /tmp/*.json — read them to verify data quality\n';
+        enrichedOutput += '- Workspace: check current directory for any files the agent created\n';
         if (options?.events) {
             enrichedOutput += formatConversationLog(options.events);
         }
