@@ -51,6 +51,20 @@ function getApiKey(env?: Record<string, string>): string | undefined {
     return env?.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
 }
 
+function getAuthToken(env?: Record<string, string>): string | undefined {
+    return env?.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_AUTH_TOKEN;
+}
+
+function createClient(env?: Record<string, string>): Anthropic | null {
+    const apiKey = getApiKey(env);
+    if (apiKey) return new Anthropic({ apiKey });
+
+    const authToken = getAuthToken(env);
+    if (authToken) return new Anthropic({ authToken });
+
+    return null;
+}
+
 async function judgeLlmSdkOnce(client: Anthropic, options: SdkJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
     try {
         const response = await client.messages.create({
@@ -82,12 +96,9 @@ async function judgeLlmSdkOnce(client: Anthropic, options: SdkJudgeOptions): Pro
 }
 
 export async function judgeLlmSdk(options: SdkJudgeOptions): Promise<JudgeLlmResult | null> {
-    const apiKey = getApiKey(options.env);
-    if (!apiKey) {
-        return null;
-    }
+    const client = createClient(options.env);
+    if (!client) return null;
 
-    const client = new Anthropic({ apiKey });
     const maxRetries = options.maxRetries ?? 2;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -103,6 +114,9 @@ export async function judgeLlmSdk(options: SdkJudgeOptions): Promise<JudgeLlmRes
     return null;
 }
 
-export function hasSdkApiKey(env?: Record<string, string>): boolean {
-    return !!getApiKey(env);
+export function hasSdkCredentials(env?: Record<string, string>): boolean {
+    return !!getApiKey(env) || !!getAuthToken(env);
 }
+
+/** @deprecated Use hasSdkCredentials instead */
+export const hasSdkApiKey = hasSdkCredentials;

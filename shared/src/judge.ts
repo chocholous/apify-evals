@@ -8,7 +8,7 @@ const Ajv = _Ajv as unknown as typeof _Ajv.default;
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
 import { SCRIPT_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_SIZE } from './constants.js';
 import { judgeLlm as judgeLlmCli } from './agents/claude.js';
-import { judgeLlmSdk, hasSdkApiKey } from './agents/judge-sdk.js';
+import { judgeLlmSdk, hasSdkCredentials } from './agents/judge-sdk.js';
 import type { JudgeLlmResult } from './agents/claude.js';
 
 export type JudgeMode = 'auto' | 'cli' | 'sdk';
@@ -19,7 +19,7 @@ function resolveJudgeFn(mode: JudgeMode | undefined, env?: Record<string, string
     const effectiveMode = mode ?? 'auto';
     if (effectiveMode === 'sdk') return judgeLlmSdk;
     if (effectiveMode === 'cli') return judgeLlmCli;
-    return hasSdkApiKey(env) ? judgeLlmSdk : judgeLlmCli;
+    return hasSdkCredentials(env) ? judgeLlmSdk : judgeLlmCli;
 }
 
 export interface CheckpointSpec {

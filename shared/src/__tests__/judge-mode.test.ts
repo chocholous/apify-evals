@@ -1,52 +1,86 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { judgeAllChecks, hasSdkApiKey } from '../index.js';
+import { judgeAllChecks, hasSdkCredentials } from '../index.js';
 
-describe('hasSdkApiKey', () => {
-    const originalEnv = process.env.ANTHROPIC_API_KEY;
+describe('hasSdkCredentials', () => {
+    const originalApiKey = process.env.ANTHROPIC_API_KEY;
+    const originalAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
 
     afterEach(() => {
-        // Restore original env
-        if (originalEnv !== undefined) {
-            process.env.ANTHROPIC_API_KEY = originalEnv;
+        if (originalApiKey !== undefined) {
+            process.env.ANTHROPIC_API_KEY = originalApiKey;
         } else {
             delete process.env.ANTHROPIC_API_KEY;
         }
+        if (originalAuthToken !== undefined) {
+            process.env.ANTHROPIC_AUTH_TOKEN = originalAuthToken;
+        } else {
+            delete process.env.ANTHROPIC_AUTH_TOKEN;
+        }
     });
 
-    it('returns true when key is in env param', () => {
+    it('returns true when API key is in env param', () => {
         delete process.env.ANTHROPIC_API_KEY;
-        expect(hasSdkApiKey({ ANTHROPIC_API_KEY: 'sk-test-123' })).toBe(true);
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({ ANTHROPIC_API_KEY: 'sk-test-123' })).toBe(true);
     });
 
-    it('returns true when key is in process.env', () => {
+    it('returns true when API key is in process.env', () => {
         process.env.ANTHROPIC_API_KEY = 'sk-test-456';
-        expect(hasSdkApiKey()).toBe(true);
+        expect(hasSdkCredentials()).toBe(true);
     });
 
-    it('returns true when key is in process.env and env param is empty', () => {
+    it('returns true when API key is in process.env and env param is empty', () => {
         process.env.ANTHROPIC_API_KEY = 'sk-test-789';
-        expect(hasSdkApiKey({})).toBe(true);
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({})).toBe(true);
     });
 
-    it('returns false when no key anywhere', () => {
+    it('returns false when no credentials anywhere', () => {
         delete process.env.ANTHROPIC_API_KEY;
-        expect(hasSdkApiKey()).toBe(false);
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials()).toBe(false);
     });
 
-    it('returns false when env param is empty and process.env has no key', () => {
+    it('returns false when env param is empty and process.env has no credentials', () => {
         delete process.env.ANTHROPIC_API_KEY;
-        expect(hasSdkApiKey({})).toBe(false);
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({})).toBe(false);
     });
 
     it('env param takes priority over process.env', () => {
         process.env.ANTHROPIC_API_KEY = 'sk-process';
-        expect(hasSdkApiKey({ ANTHROPIC_API_KEY: 'sk-param' })).toBe(true);
+        expect(hasSdkCredentials({ ANTHROPIC_API_KEY: 'sk-param' })).toBe(true);
     });
 
-    it('returns false for empty string key in env param', () => {
+    it('returns false for empty string API key in env param', () => {
         delete process.env.ANTHROPIC_API_KEY;
-        expect(hasSdkApiKey({ ANTHROPIC_API_KEY: '' })).toBe(false);
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({ ANTHROPIC_API_KEY: '' })).toBe(false);
+    });
+
+    it('returns true when auth token is in env param (OAuth)', () => {
+        delete process.env.ANTHROPIC_API_KEY;
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({ ANTHROPIC_AUTH_TOKEN: 'oauth-token-123' })).toBe(true);
+    });
+
+    it('returns true when auth token is in process.env (OAuth)', () => {
+        delete process.env.ANTHROPIC_API_KEY;
+        process.env.ANTHROPIC_AUTH_TOKEN = 'oauth-token-456';
+        expect(hasSdkCredentials()).toBe(true);
+    });
+
+    it('returns false for empty string auth token', () => {
+        delete process.env.ANTHROPIC_API_KEY;
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({ ANTHROPIC_AUTH_TOKEN: '' })).toBe(false);
+    });
+
+    it('API key takes priority — both present still returns true', () => {
+        delete process.env.ANTHROPIC_API_KEY;
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+        expect(hasSdkCredentials({ ANTHROPIC_API_KEY: 'sk-key', ANTHROPIC_AUTH_TOKEN: 'oauth-tok' })).toBe(true);
     });
 });
 

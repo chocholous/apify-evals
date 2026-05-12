@@ -1,5 +1,5 @@
 export { parseScenario, ScenarioParseError } from './scenario-parser.js';
-export { judgeLlmSdk, hasSdkApiKey } from './agents/judge-sdk.js';
+export { judgeLlmSdk, hasSdkCredentials, hasSdkApiKey } from './agents/judge-sdk.js';
 export { runAgent, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from './agents/run.js';
 export { getAgentDef, buildAgentArgs, AGENT_REGISTRY } from './agents/registry.js';
 export { judgeAllChecks, parseCheckpointSection } from './judge.js';
