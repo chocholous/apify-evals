@@ -168,6 +168,22 @@ Presets konfigurují **prostředí agenta** (ne vyhodnocení):
 - `mcpc` — zkontroluje mcpc, volitelně zapíše MCP config
 - Custom script běží PO presetu (bash, timeout 5 min)
 
+### Plugin auto-detection
+
+Runner automaticky detekuje Claude Code pluginy v workspace. Pokud init script (nebo custom bash) umístí `.claude-plugin/plugin.json` do workspace root, runner přidá `--plugin-dir <workspace>` k CLI příkazu. Tím se plugin (skills, hooks, commands) automaticky nahraje agentovi.
+
+Typický init script pro plugin eval:
+```bash
+git clone --depth 1 https://github.com/user/my-plugin.git _plugin
+cp -r _plugin/.claude-plugin .claude-plugin
+cp -r _plugin/skills skills
+rm -rf _plugin
+```
+
+Nic dalšího v inputu není potřeba — `pluginDirs` se nespecifikuje, detekce je automatická.
+
+**Důležité:** `CLAUDE_CODE_OAUTH_TOKEN` vyžaduje `CLAUDE_CODE=0` v `envVariables` a nesmí být nastaven `ANTHROPIC_API_KEY` (ani prázdný string — přebíjí OAuth).
+
 ## LLM Judge
 
 Judge má dva backendy, vybraný přes `judgeMode` input (`auto` | `cli` | `sdk`):
