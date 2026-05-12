@@ -6,7 +6,7 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
-import { SCRIPT_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_SIZE } from './constants.js';
+import { SCRIPT_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_SIZE, TOOL_INPUT_MAX_CHARS } from './constants.js';
 import { judgeLlm as judgeLlmCli } from './agents/claude.js';
 import { judgeLlmSdk, hasSdkCredentials } from './agents/judge-sdk.js';
 import type { JudgeLlmResult } from './agents/claude.js';
@@ -250,6 +250,7 @@ export interface JudgeOptions {
     judgeMode?: JudgeMode;
     workDir?: string;
     scriptTimeoutMs?: number;
+    events?: Array<{ type: string; message?: { content: Array<{ type: string; text?: string; name?: string; input?: unknown }> } }>;
 }
 
 const DEFAULT_MAX_FILES = MAX_WORKSPACE_FILES;
@@ -295,6 +296,35 @@ function collectWorkspaceFiles(dir: string, maxFiles: number, maxFileSize: numbe
     ).join('\n\n');
 }
 
+function formatConversationLog(events: JudgeOptions['events'], maxChars = 8000): string {
+    if (!events || events.length === 0) return '';
+
+    const lines: string[] = [];
+    let totalChars = 0;
+
+    for (const event of events) {
+        if (event.type !== 'assistant' || !event.message?.content) continue;
+        for (const block of event.message.content) {
+            if (block.type === 'tool_use' && block.name) {
+                const inputStr = block.input ? JSON.stringify(block.input).slice(0, TOOL_INPUT_MAX_CHARS) : '';
+                const line = `→ ${block.name}(${inputStr})`;
+                totalChars += line.length;
+                if (totalChars > maxChars) return '\n\n## Agent Conversation Log (tool calls)\n\n```\n' + lines.join('\n') + '\n[truncated]\n```';
+                lines.push(line);
+            } else if (block.type === 'text' && block.text) {
+                const preview = block.text.slice(0, 200).replace(/\n/g, ' ');
+                const line = `  "${preview}"`;
+                totalChars += line.length;
+                if (totalChars > maxChars) return '\n\n## Agent Conversation Log (tool calls)\n\n```\n' + lines.join('\n') + '\n[truncated]\n```';
+                lines.push(line);
+            }
+        }
+    }
+
+    if (lines.length === 0) return '';
+    return '\n\n## Agent Conversation Log (tool calls)\n\n```\n' + lines.join('\n') + '\n```';
+}
+
 export interface JudgeResult {
     verdicts: CheckVerdict[];
     overallVerdict: VerdictValue;
@@ -320,10 +350,13 @@ export async function judgeAllChecks(
     }
 
     if (parsed.judgePrompt) {
-        // Include workspace files so judge can see actual code/artifacts
+        // Include workspace files and conversation log so judge can verify data and tool usage
         let enrichedOutput = agentOutput;
         if (options?.workDir) {
             enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_SIZE);
+        }
+        if (options?.events) {
+            enrichedOutput += formatConversationLog(options.events);
         }
 
         const judgeFn = resolveJudgeFn(options?.judgeMode, options?.env);

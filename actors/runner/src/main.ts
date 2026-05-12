@@ -214,7 +214,7 @@ for (let i = 0; i < tests.length; i++) {
         // Judge all checks
         const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir, judgeMode });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir, judgeMode, events: result.events });
         judgeMs = Date.now() - judgeStart;
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({
