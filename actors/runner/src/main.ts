@@ -1,5 +1,6 @@
 import { setTimeout } from 'node:timers/promises';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
@@ -104,6 +105,13 @@ for (const msg of initResult.presetLog) {
     log.info(`[init] ${msg}`);
 }
 
+// Auto-detect plugins: if init script placed a .claude-plugin/ in workspace, load it via --plugin-dir
+const pluginDirs: string[] = [];
+if (existsSync(join(workspaceDir, '.claude-plugin', 'plugin.json'))) {
+    pluginDirs.push(workspaceDir);
+    log.info(`[init] Plugin detected in workspace: ${workspaceDir}/.claude-plugin/`);
+}
+
 const allResults: AgentResult[] = [];
 const allEventLines: string[] = [];
 const allJudgeLines: string[] = [];
@@ -138,6 +146,7 @@ for (let i = 0; i < tests.length; i++) {
             cwd: workspaceDir,
             mcpConfigPath: initResult.mcpConfigPath ?? undefined,
             strictMcpConfig: initResult.strictMcpConfig,
+            pluginDirs: pluginDirs.length > 0 ? pluginDirs : undefined,
             abortSignal: abortController.signal,
         });
         endAgentSpan(agentSpan, result);

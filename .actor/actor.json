@@ -3,8 +3,8 @@
     "actorSpecification": 1,
     "name": "agent-evals-runner",
     "title": "Agent Evals Runner",
-    "description": "Runs a single eval scenario with a single AI agent (Claude Code, Codex, OpenCode) and returns structured results with pass/fail verdicts per checkpoint.",
-    "version": "0.1",
+    "description": "Evaluate AI coding agents (Claude Code, Codex, OpenCode) against test scenarios with automatic judging. Write tests in Markdown with deterministic checks (contains, regex, json-schema, bash scripts) and LLM judge. Compare MCP vs CLI tool integration, measure cost/tokens/latency, and track agent trajectory (tool calls, file operations, error recovery). Returns structured results per checkpoint with full metrics.",
+    "version": "0.2",
     "buildTag": "latest",
     "categories": ["DEVELOPER_TOOLS"],
     "meta": {

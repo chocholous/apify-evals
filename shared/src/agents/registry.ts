@@ -11,6 +11,7 @@ export interface AgentDef {
     budgetFlag: string | null;
     mcpConfigFlag: string | null;
     mcpStrictFlag: string | null;
+    pluginDirFlag: string | null;
     outputFormat: 'ndjson' | 'json' | 'text';
     stdinMode: 'ignore' | 'pipe-eof';
 }
@@ -29,6 +30,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         budgetFlag: '--max-budget-usd',
         mcpConfigFlag: '--mcp-config',
         mcpStrictFlag: '--strict-mcp-config',
+        pluginDirFlag: '--plugin-dir',
         outputFormat: 'ndjson',
         stdinMode: 'ignore',
     },
@@ -45,6 +47,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         budgetFlag: null,
         mcpConfigFlag: null,
         mcpStrictFlag: null,
+        pluginDirFlag: null,
         outputFormat: 'ndjson',
         stdinMode: 'pipe-eof',
     },
@@ -61,6 +64,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         budgetFlag: null,
         mcpConfigFlag: null,
         mcpStrictFlag: null,
+        pluginDirFlag: null,
         outputFormat: 'ndjson',
         stdinMode: 'ignore',
     },
@@ -78,6 +82,7 @@ export function buildAgentArgs(def: AgentDef, opts: {
     maxBudgetUsd?: number;
     mcpConfigPath?: string;
     strictMcpConfig?: boolean;
+    pluginDirs?: string[];
 }): string[] {
     const args: string[] = [];
 
@@ -111,6 +116,11 @@ export function buildAgentArgs(def: AgentDef, opts: {
         args.push(def.mcpConfigFlag, opts.mcpConfigPath);
         if (opts.strictMcpConfig && def.mcpStrictFlag) {
             args.push(def.mcpStrictFlag);
+        }
+    }
+    if (opts.pluginDirs && def.pluginDirFlag) {
+        for (const dir of opts.pluginDirs) {
+            args.push(def.pluginDirFlag, dir);
         }
     }
 

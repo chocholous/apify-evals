@@ -16,6 +16,7 @@ export interface AgentRunOptions {
     maxBudgetUsd?: number;
     mcpConfigPath?: string;
     strictMcpConfig?: boolean;
+    pluginDirs?: string[];
     env?: Record<string, string>;
     cwd?: string;
     onEvent?: (event: AgentEvent) => void;
@@ -535,6 +536,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             maxBudgetUsd: options.maxBudgetUsd,
             mcpConfigPath: options.mcpConfigPath,
             strictMcpConfig: options.strictMcpConfig,
+            pluginDirs: options.pluginDirs,
         });
 
         const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
