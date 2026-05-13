@@ -1,5 +1,5 @@
 import { setTimeout } from 'node:timers/promises';
-import { mkdirSync, existsSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -188,6 +188,19 @@ for (let i = 0; i < tests.length; i++) {
         }
 
         log.info(`  Agent responded (${result.metrics.numTurns} turns, ${formatCost(result.metrics.totalCostUsd)}, ${formatDuration(result.metrics.durationMs)})`);
+
+        // Write trajectory to workspace so script checkpoints can verify agent behavior
+        try {
+            const trajectoryData = {
+                toolCallSequence: result.trajectory.toolCallSequence,
+                commandsExecuted: result.trajectory.commandsExecuted,
+                filesCreated: result.trajectory.filesCreated,
+                mcpToolsUsed: result.trajectory.mcpToolsUsed,
+                toolCallCount: result.trajectory.toolCallCount,
+                uniqueToolsUsed: result.trajectory.uniqueToolsUsed,
+            };
+            writeFileSync(join(workspaceDir, '.eval-trajectory.json'), JSON.stringify(trajectoryData, null, 2));
+        } catch { /* non-critical */ }
 
         // Monitor extraction
         if (test.monitor) {
