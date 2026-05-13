@@ -20,6 +20,7 @@ export interface AgentRunOptions {
     env?: Record<string, string>;
     cwd?: string;
     onEvent?: (event: AgentEvent) => void;
+    onRawLine?: (line: string) => void;
     abortSignal?: AbortSignal;
 }
 
@@ -576,6 +577,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
 
         rl.on('line', (line) => {
             if (!line.trim()) return;
+            options.onRawLine?.(line);
             try {
                 const event = JSON.parse(line) as AgentEvent;
                 events.push(event);

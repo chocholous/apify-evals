@@ -183,7 +183,8 @@ for (let i = 0; i < tests.length; i++) {
             ?? 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
 
         let turnCount = 0;
-        const liveEvents: string[] = [];
+        let rawLineCount = 0;
+        const rawLines: string[] = [];
         const agentSpan = startAgentSpan(tracer, agent);
         const result = await runAgent({
             agent,
@@ -198,6 +199,14 @@ for (let i = 0; i < tests.length; i++) {
             strictMcpConfig: currentStrictMcp,
             pluginDirs: currentPluginDirs.length > 0 ? currentPluginDirs : undefined,
             abortSignal: abortController.signal,
+            onRawLine: (line) => {
+                rawLineCount++;
+                rawLines.push(line);
+                if (rawLines.length > 500) rawLines.shift();
+                if (rawLineCount % 20 === 0) {
+                    Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
+                }
+            },
             onEvent: (event) => {
                 if (event.type === 'assistant' && event.message?.content) {
                     turnCount++;
@@ -214,11 +223,10 @@ for (let i = 0; i < tests.length; i++) {
                         log.info(`    [turn ${turnCount}] writing (${textLen} chars)`);
                     }
                 }
-                liveEvents.push(JSON.stringify(event));
-                Actor.setValue('LIVE-AGENT-LOG', liveEvents.slice(-100).join('\n'), { contentType: 'text/plain' }).catch(() => {});
             },
         });
         endAgentSpan(agentSpan, result);
+        Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
 
         lastRunResult = result;
 
