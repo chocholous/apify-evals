@@ -37,8 +37,11 @@ const VERDICT_SCHEMA = JSON.stringify({
 });
 
 function judgeLlmOnce(options: ClaudeJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
+    const JUDGE_TIMEOUT_MS = 5 * 60 * 1000;
+
     return new Promise((resolve) => {
-        const prompt = `You are an evaluation judge. Determine whether the agent's output satisfies the checkpoint criteria.
+        const prompt = `You are an evaluation judge. You have a soft budget of 5 minutes for this evaluation.
+Determine whether the agent's output satisfies the checkpoint criteria.
 
 ## Agent Output
 ${options.agentOutput}
@@ -53,7 +56,6 @@ Evaluate carefully and return your verdict.`;
             '--output-format', 'json',
             '--json-schema', VERDICT_SCHEMA,
             '--model', options.model ?? JUDGE_MODEL,
-            '--max-turns', '15',
             '--dangerously-skip-permissions',
             '--no-session-persistence',
         ], {
@@ -61,12 +63,19 @@ Evaluate carefully and return your verdict.`;
             env: options.env ? { ...process.env, ...options.env } : process.env,
         });
 
+        const timer = setTimeout(() => {
+            child.kill('SIGTERM');
+            setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 3000);
+            resolve({ result: null, error: `Judge timed out after ${JUDGE_TIMEOUT_MS / 1000}s` });
+        }, JUDGE_TIMEOUT_MS);
+
         let stdout = '';
         let stderr = '';
         child.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
         child.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
 
         child.on('close', (code) => {
+            clearTimeout(timer);
             try {
                 const parsed = JSON.parse(stdout);
                 if (parsed.structured_output) {
@@ -80,6 +89,7 @@ Evaluate carefully and return your verdict.`;
         });
 
         child.on('error', (err) => {
+            clearTimeout(timer);
             resolve({ result: null, error: `spawn error: ${err.message}` });
         });
     });
