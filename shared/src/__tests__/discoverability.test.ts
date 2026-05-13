@@ -56,6 +56,7 @@ const et = (overrides: Partial<ExpectedTools> = {}): ExpectedTools => ({
     required: [], forbidden: [], optional: [],
     requiredCommands: [], forbiddenCommands: [],
     requiredFiles: [],
+    severity: 'warning',
     ...overrides,
 });
 

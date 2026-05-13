@@ -5,6 +5,7 @@ export interface ExpectedTools {
     requiredCommands: string[];
     forbiddenCommands: string[];
     requiredFiles: string[];
+    severity: 'fail' | 'warning';
 }
 
 export interface ScenarioMeta {
@@ -34,7 +35,7 @@ export interface ParsedScenario {
 
 export type VerdictValue = 'pass' | 'fail' | 'unclear';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge' | 'error';
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge' | 'discoverability' | 'error';
 
 export interface CheckVerdict {
     checkType: CheckType;

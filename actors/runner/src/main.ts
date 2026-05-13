@@ -302,9 +302,53 @@ for (let i = 0; i < tests.length; i++) {
             durationMs: judgeMs,
             timestamp: new Date().toISOString(),
         }));
+        // Add discoverability checks as verdicts
+        const disc = computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? EMPTY_TRAJECTORY);
+        if (disc && meta.expectedTools) {
+            const sev = meta.expectedTools.severity;
+            const verdictValue = sev === 'fail' ? 'fail' as const : 'unclear' as const;
+
+            if (disc.missingTools.length > 0) {
+                judgeResult.verdicts.push({
+                    checkType: 'discoverability', checkValue: `required tools: ${disc.missingTools.join(', ')}`,
+                    verdict: verdictValue, evidence: `Missing required tools: ${disc.missingTools.join(', ')}`, confidence: 1,
+                });
+            }
+            if (disc.forbiddenToolsUsed.length > 0) {
+                judgeResult.verdicts.push({
+                    checkType: 'discoverability', checkValue: `forbidden tools: ${disc.forbiddenToolsUsed.join(', ')}`,
+                    verdict: verdictValue, evidence: `Used forbidden tools: ${disc.forbiddenToolsUsed.join(', ')}`, confidence: 1,
+                });
+            }
+            if (disc.missingCommands.length > 0) {
+                judgeResult.verdicts.push({
+                    checkType: 'discoverability', checkValue: `required commands: ${disc.missingCommands.join(', ')}`,
+                    verdict: verdictValue, evidence: `Missing required commands: ${disc.missingCommands.join(', ')}`, confidence: 1,
+                });
+            }
+            if (disc.forbiddenCommandsUsed.length > 0) {
+                judgeResult.verdicts.push({
+                    checkType: 'discoverability', checkValue: `forbidden commands: ${disc.forbiddenCommandsUsed.join(', ')}`,
+                    verdict: verdictValue, evidence: `Used forbidden commands: ${disc.forbiddenCommandsUsed.join(', ')}`, confidence: 1,
+                });
+            }
+            if (disc.missingFiles.length > 0) {
+                judgeResult.verdicts.push({
+                    checkType: 'discoverability', checkValue: `required files: ${disc.missingFiles.join(', ')}`,
+                    verdict: verdictValue, evidence: `Missing required files: ${disc.missingFiles.join(', ')}`, confidence: 1,
+                });
+            }
+
+            // Recompute overallVerdict with discoverability
+            const hasFail = judgeResult.verdicts.some((v) => v.verdict === 'fail');
+            const hasUnclear = judgeResult.verdicts.some((v) => v.verdict === 'unclear');
+            judgeResult.overallVerdict = hasFail ? 'fail' : hasUnclear ? 'unclear' : 'pass';
+        }
+
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
         for (const v of judgeResult.verdicts) {
-            log.info(`    ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+            const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
+            log.info(`    ${icon} ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
         }
 
         if (judgeResult.overallVerdict === 'pass') break;

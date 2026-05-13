@@ -26,6 +26,7 @@ export function parseScenario(markdown: string): ParsedScenario {
             requiredCommands: Array.isArray(et.requiredCommands) ? et.requiredCommands : [],
             forbiddenCommands: Array.isArray(et.forbiddenCommands) ? et.forbiddenCommands : [],
             requiredFiles: Array.isArray(et.requiredFiles) ? et.requiredFiles : [],
+            severity: et.severity === 'fail' ? 'fail' : 'warning',
         };
     }
 
