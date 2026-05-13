@@ -24,20 +24,30 @@ function computeDiscoverability(expected: ExpectedTools | undefined, trajectory:
     const forbiddenCommandsUsed = expected.forbiddenCommands.filter(
         (pattern) => commands.some((cmd) => cmd.includes(pattern)),
     );
+    const allFiles = [...trajectory.filesCreated, ...trajectory.filesModified];
+    const missingFiles = expected.requiredFiles.filter((pattern) => {
+        if (pattern.includes('*')) {
+            const regex = new RegExp(pattern.replace(/\./g, '\\.').replace(/\*/g, '.*'));
+            return !allFiles.some((f) => regex.test(f));
+        }
+        return !allFiles.some((f) => f.includes(pattern));
+    });
     const foundRequired = expected.required.filter((t) => actualSet.has(t));
     const foundRequiredCommands = expected.requiredCommands.length - missingCommands.length;
-    const totalRequired = expected.required.length + expected.requiredCommands.length;
-    const totalFound = foundRequired.length + foundRequiredCommands;
+    const foundRequiredFiles = expected.requiredFiles.length - missingFiles.length;
+    const totalRequired = expected.required.length + expected.requiredCommands.length + expected.requiredFiles.length;
+    const totalFound = foundRequired.length + foundRequiredCommands + foundRequiredFiles;
     const discoverabilityScore = totalRequired > 0 ? totalFound / totalRequired : 1.0;
     const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0
-        && missingCommands.length === 0 && forbiddenCommandsUsed.length === 0) ? 1.0 : 0.0;
+        && missingCommands.length === 0 && forbiddenCommandsUsed.length === 0
+        && missingFiles.length === 0) ? 1.0 : 0.0;
     return {
         expectedRequired: expected.required,
         expectedForbidden: expected.forbidden,
         expectedOptional: expected.optional,
         actualTools: actual,
         missingTools, extraTools, forbiddenToolsUsed,
-        missingCommands, forbiddenCommandsUsed,
+        missingCommands, forbiddenCommandsUsed, missingFiles,
         discoverabilityScore, strictScore,
     };
 }
@@ -45,6 +55,7 @@ function computeDiscoverability(expected: ExpectedTools | undefined, trajectory:
 const et = (overrides: Partial<ExpectedTools> = {}): ExpectedTools => ({
     required: [], forbidden: [], optional: [],
     requiredCommands: [], forbiddenCommands: [],
+    requiredFiles: [],
     ...overrides,
 });
 
@@ -141,6 +152,38 @@ describe('computeDiscoverability', () => {
         )!;
         expect(result.forbiddenCommandsUsed).toEqual(['wget']);
         expect(result.strictScore).toBe(0.0);
+    });
+
+    it('requiredFiles checked in filesCreated', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.filesCreated = ['/tmp/serp.json', '/tmp/reviews.json'];
+        const result = computeDiscoverability(
+            et({ required: ['Bash'], requiredFiles: ['.json'] }),
+            traj,
+        )!;
+        expect(result.missingFiles).toEqual([]);
+        expect(result.strictScore).toBe(1.0);
+    });
+
+    it('missing requiredFile lowers score', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.filesCreated = ['/tmp/output.txt'];
+        const result = computeDiscoverability(
+            et({ required: ['Bash'], requiredFiles: ['.json'] }),
+            traj,
+        )!;
+        expect(result.missingFiles).toEqual(['.json']);
+        expect(result.strictScore).toBe(0.0);
+    });
+
+    it('requiredFiles glob pattern works', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.filesCreated = ['/tmp/serp_results.json', '/tmp/reviews.json'];
+        const result = computeDiscoverability(
+            et({ requiredFiles: ['*/serp*.json'] }),
+            traj,
+        )!;
+        expect(result.missingFiles).toEqual([]);
     });
 
     it('zero required = score 1.0', () => {
