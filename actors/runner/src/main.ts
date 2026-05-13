@@ -214,11 +214,8 @@ for (let i = 0; i < tests.length; i++) {
                         log.info(`    [turn ${turnCount}] writing (${textLen} chars)`);
                     }
                 }
-                // Stream partial conversation to KV store every 10 turns
                 liveEvents.push(JSON.stringify(event));
-                if (turnCount > 0 && turnCount % 10 === 0) {
-                    Actor.setValue('LIVE-AGENT-LOG', liveEvents.slice(-50).join('\n'), { contentType: 'text/plain' }).catch(() => {});
-                }
+                Actor.setValue('LIVE-AGENT-LOG', liveEvents.slice(-100).join('\n'), { contentType: 'text/plain' }).catch(() => {});
             },
         });
         endAgentSpan(agentSpan, result);
