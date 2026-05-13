@@ -351,9 +351,9 @@ export async function judgeAllChecks(
 
     if (parsed.judgePrompt) {
         let enrichedOutput = agentOutput;
-        enrichedOutput += '\n\n## How to verify\n';
-        enrichedOutput += '- Data files: agent saves actor output to /tmp/*.json — read them to verify data quality\n';
-        enrichedOutput += '- Workspace: check current directory for any files the agent created\n';
+        enrichedOutput += '\n\n## Verification context\n';
+        enrichedOutput += '- .eval-trajectory.json: agent tool calls, commands executed, files created\n';
+        enrichedOutput += '- You have full tool access (Read, Bash) to inspect workspace files and /tmp/ if needed\n';
         if (options?.events) {
             enrichedOutput += formatConversationLog(options.events);
         }
