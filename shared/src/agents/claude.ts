@@ -53,6 +53,7 @@ Evaluate carefully and return your verdict.`;
             '--output-format', 'json',
             '--json-schema', VERDICT_SCHEMA,
             '--model', options.model ?? JUDGE_MODEL,
+            '--max-turns', '15',
             '--dangerously-skip-permissions',
             '--no-session-persistence',
         ], {
