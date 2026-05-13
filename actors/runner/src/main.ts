@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics, JudgeMode } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -20,7 +20,6 @@ interface RunnerInput {
     initBashScript?: string;
     mcpConfigJson?: Record<string, unknown>;
     judgeModel?: string;
-    judgeMode?: JudgeMode;
 }
 
 function computeDiscoverability(expected: ExpectedTools | undefined, trajectory: TrajectoryMetrics): DiscoverabilityMetrics | null {
@@ -98,7 +97,6 @@ const secrets = input.envVariables ?? {};
 const agent = input.agent ?? 'claude-code';
 const maxRetries = input.maxRetries ?? 0;
 const maxTurns = input.maxTurns ?? 10;
-const judgeMode = input.judgeMode ?? 'auto';
 
 const tracer = initOtel();
 const scenarioSpan = startScenarioSpan(tracer, {
@@ -292,7 +290,7 @@ for (let i = 0; i < tests.length; i++) {
         // Judge all checks
         const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: currentWorkDir, judgeMode, judgeModel: input.judgeModel, events: result.events });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: currentWorkDir, judgeModel: input.judgeModel, events: result.events });
         judgeMs = Date.now() - judgeStart;
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({

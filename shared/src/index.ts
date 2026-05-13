@@ -1,5 +1,4 @@
 export { parseScenario, ScenarioParseError } from './scenario-parser.js';
-export { judgeLlmSdk, hasSdkCredentials, hasSdkApiKey } from './agents/judge-sdk.js';
 export { runAgent, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from './agents/run.js';
 export { getAgentDef, buildAgentArgs, AGENT_REGISTRY } from './agents/registry.js';
 export { judgeAllChecks, parseCheckpointSection } from './judge.js';
@@ -12,9 +11,8 @@ export { spansToOtlpJson, BufferSpanExporter } from './otel-exporter.js';
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
 export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, DiscoverabilityMetrics, JudgeMetrics, ExpectedTools, AgentEvent, ModelUsage, AgentType } from './types.js';
 export type { JudgeLlmResult } from './agents/claude.js';
-export type { SdkJudgeOptions } from './agents/judge-sdk.js';
 export type { AgentRunOptions, AgentRunResult } from './agents/run.js';
 export type { AgentDef } from './agents/registry.js';
-export type { CheckpointSpec, ParsedCheckpoint, JudgeOptions, JudgeResult, ScriptJudgeOptions, JudgeMode } from './judge.js';
+export type { CheckpointSpec, ParsedCheckpoint, JudgeOptions, JudgeResult, ScriptJudgeOptions } from './judge.js';
 export type { OtlpJsonData } from './otel-exporter.js';
 export type { PresetName, InitContext, InitResult } from './init-presets.js';

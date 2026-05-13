@@ -87,18 +87,6 @@
             "nullable": true,
             "prefill": ""
         },
-        "judgeMode": {
-            "title": "Judge Mode",
-            "type": "string",
-            "description": "How to run the LLM judge. 'auto' uses Anthropic SDK if ANTHROPIC_API_KEY is in env variables (faster, with cost tracking), falls back to claude CLI otherwise. 'cli' forces claude -p (works with OAuth). 'sdk' forces Anthropic SDK (requires ANTHROPIC_API_KEY).",
-            "enum": ["auto", "cli", "sdk"],
-            "enumTitles": [
-                "Auto — SDK if ANTHROPIC_API_KEY provided, CLI otherwise",
-                "CLI — uses claude -p (works with OAuth token)",
-                "SDK — uses Anthropic API directly (faster, requires ANTHROPIC_API_KEY)"
-            ],
-            "default": "auto"
-        },
         "mcpConfigJson": {
             "title": "MCP Config JSON",
             "type": "object",
