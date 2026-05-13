@@ -152,8 +152,31 @@ for (let i = 0; i < tests.length; i++) {
     let attempt = 0;
     let judgeMs = 0;
 
+    let currentWorkDir = workspaceDir;
+    let currentPluginDirs = [...pluginDirs];
+    let currentMcpConfigPath = initResult.mcpConfigPath;
+    let currentStrictMcp = initResult.strictMcpConfig;
+
     while (attempt <= maxRetries) {
-        if (attempt > 0) log.info(`  Retry ${attempt}/${maxRetries}`);
+        if (attempt > 0) {
+            log.info(`  Retry ${attempt}/${maxRetries} — fresh workspace`);
+            currentWorkDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
+            mkdirSync(currentWorkDir, { recursive: true });
+            const retryInit = runInitPreset({
+                preset,
+                customScript: input.initBashScript,
+                mcpConfigJson: input.mcpConfigJson as Record<string, unknown>,
+                workDir: currentWorkDir,
+            });
+            for (const msg of retryInit.presetLog) log.info(`  [retry-init] ${msg}`);
+            currentMcpConfigPath = retryInit.mcpConfigPath;
+            currentStrictMcp = retryInit.strictMcpConfig;
+            currentPluginDirs = [];
+            if (existsSync(join(currentWorkDir, '.claude-plugin', 'plugin.json'))) {
+                currentPluginDirs.push(currentWorkDir);
+                log.info(`  [retry-init] Plugin detected`);
+            }
+        }
         monitorOutput = null;
 
         const systemPrompt = input.systemPrompt
@@ -169,10 +192,10 @@ for (let i = 0; i < tests.length; i++) {
             maxTurns,
             maxBudgetUsd: input.maxBudgetUsd,
             env: secrets,
-            cwd: workspaceDir,
-            mcpConfigPath: initResult.mcpConfigPath ?? undefined,
-            strictMcpConfig: initResult.strictMcpConfig,
-            pluginDirs: pluginDirs.length > 0 ? pluginDirs : undefined,
+            cwd: currentWorkDir,
+            mcpConfigPath: currentMcpConfigPath ?? undefined,
+            strictMcpConfig: currentStrictMcp,
+            pluginDirs: currentPluginDirs.length > 0 ? currentPluginDirs : undefined,
             abortSignal: abortController.signal,
             onEvent: (event) => {
                 if (event.type === 'assistant' && event.message?.content) {
@@ -224,7 +247,7 @@ for (let i = 0; i < tests.length; i++) {
                 toolCallCount: result.trajectory.toolCallCount,
                 uniqueToolsUsed: result.trajectory.uniqueToolsUsed,
             };
-            writeFileSync(join(workspaceDir, '.eval-trajectory.json'), JSON.stringify(trajectoryData, null, 2));
+            writeFileSync(join(currentWorkDir, '.eval-trajectory.json'), JSON.stringify(trajectoryData, null, 2));
         } catch { /* non-critical */ }
 
         // Monitor extraction
@@ -252,7 +275,7 @@ for (let i = 0; i < tests.length; i++) {
         // Judge all checks
         const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: workspaceDir, judgeMode, judgeModel: input.judgeModel, events: result.events });
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: currentWorkDir, judgeMode, judgeModel: input.judgeModel, events: result.events });
         judgeMs = Date.now() - judgeStart;
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({
