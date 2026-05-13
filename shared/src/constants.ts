@@ -1,4 +1,4 @@
-export const JUDGE_MODEL = 'claude-opus-4-6';
+export const JUDGE_MODEL = 'claude-sonnet-4-6';
 export const JUDGE_MAX_TOKENS = 4096;
 export const SCRIPT_TIMEOUT_MS = 60_000;
 export const INIT_SCRIPT_TIMEOUT_MS = 300_000;

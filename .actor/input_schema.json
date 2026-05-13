@@ -87,6 +87,13 @@
             "nullable": true,
             "prefill": ""
         },
+        "judgeModel": {
+            "title": "Judge Model",
+            "type": "string",
+            "description": "LLM model for the evaluation judge. Default: claude-sonnet-4-6. Use claude-opus-4-6 for complex evaluations requiring deep data verification.",
+            "editor": "textfield",
+            "nullable": true
+        },
         "mcpConfigJson": {
             "title": "MCP Config JSON",
             "type": "object",
