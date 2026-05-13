@@ -183,6 +183,7 @@ for (let i = 0; i < tests.length; i++) {
             ?? 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
 
         let turnCount = 0;
+        const liveEvents: string[] = [];
         const agentSpan = startAgentSpan(tracer, agent);
         const result = await runAgent({
             agent,
@@ -214,9 +215,9 @@ for (let i = 0; i < tests.length; i++) {
                     }
                 }
                 // Stream partial conversation to KV store every 10 turns
+                liveEvents.push(JSON.stringify(event));
                 if (turnCount > 0 && turnCount % 10 === 0) {
-                    const summary = allEventLines.slice(-50).join('\n');
-                    Actor.setValue('LIVE-AGENT-LOG', summary, { contentType: 'text/plain' }).catch(() => {});
+                    Actor.setValue('LIVE-AGENT-LOG', liveEvents.slice(-50).join('\n'), { contentType: 'text/plain' }).catch(() => {});
                 }
             },
         });
