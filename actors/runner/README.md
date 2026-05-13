@@ -47,6 +47,7 @@ The answer should name a real, currently existing repository.
 - Each test needs `## Test` (the prompt) and `## Checkpoint` (evaluation criteria)
 - Optional: `## Monitor` — a follow-up question about the agent's work
 - YAML frontmatter: `name` (required), `description`, `abortOnFailure` (stop on first failure)
+- **Retries (experimental):** `maxRetries` input re-runs a failed test. ⚠️ Retries create a fresh workspace but may produce inconsistent results due to agent caching, auth state, and non-determinism. Recommended: `maxRetries: 0` (default) — one run per actor call
 
 ## Checkpoint syntax
 

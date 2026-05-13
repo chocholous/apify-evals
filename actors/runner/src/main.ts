@@ -203,9 +203,20 @@ for (let i = 0; i < tests.length; i++) {
                     const tools = event.message.content
                         .filter((c) => c.type === 'tool_use' && c.name)
                         .map((c) => c.name);
+                    const hasText = event.message.content.some((c) => c.type === 'text' && c.text?.trim());
                     if (tools.length > 0) {
                         log.info(`    [turn ${turnCount}] ${tools.join(', ')}`);
+                    } else if (hasText) {
+                        const textLen = event.message.content
+                            .filter((c) => c.type === 'text')
+                            .reduce((sum, c) => sum + (c.text?.length ?? 0), 0);
+                        log.info(`    [turn ${turnCount}] writing (${textLen} chars)`);
                     }
+                }
+                // Stream partial conversation to KV store every 10 turns
+                if (turnCount > 0 && turnCount % 10 === 0) {
+                    const summary = allEventLines.slice(-50).join('\n');
+                    Actor.setValue('LIVE-AGENT-LOG', summary, { contentType: 'text/plain' }).catch(() => {});
                 }
             },
         });
