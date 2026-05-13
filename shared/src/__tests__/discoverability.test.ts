@@ -17,18 +17,36 @@ function computeDiscoverability(expected: ExpectedTools | undefined, trajectory:
     const missingTools = expected.required.filter((t) => !actualSet.has(t));
     const extraTools = actual.filter((t) => !allowedSet.has(t) && !expected.forbidden.includes(t));
     const forbiddenToolsUsed = expected.forbidden.filter((t) => actualSet.has(t));
+    const commands = trajectory.commandsExecuted;
+    const missingCommands = expected.requiredCommands.filter(
+        (pattern) => !commands.some((cmd) => cmd.includes(pattern)),
+    );
+    const forbiddenCommandsUsed = expected.forbiddenCommands.filter(
+        (pattern) => commands.some((cmd) => cmd.includes(pattern)),
+    );
     const foundRequired = expected.required.filter((t) => actualSet.has(t));
-    const discoverabilityScore = expected.required.length > 0 ? foundRequired.length / expected.required.length : 1.0;
-    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0) ? 1.0 : 0.0;
+    const foundRequiredCommands = expected.requiredCommands.length - missingCommands.length;
+    const totalRequired = expected.required.length + expected.requiredCommands.length;
+    const totalFound = foundRequired.length + foundRequiredCommands;
+    const discoverabilityScore = totalRequired > 0 ? totalFound / totalRequired : 1.0;
+    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0
+        && missingCommands.length === 0 && forbiddenCommandsUsed.length === 0) ? 1.0 : 0.0;
     return {
         expectedRequired: expected.required,
         expectedForbidden: expected.forbidden,
         expectedOptional: expected.optional,
         actualTools: actual,
         missingTools, extraTools, forbiddenToolsUsed,
+        missingCommands, forbiddenCommandsUsed,
         discoverabilityScore, strictScore,
     };
 }
+
+const et = (overrides: Partial<ExpectedTools> = {}): ExpectedTools => ({
+    required: [], forbidden: [], optional: [],
+    requiredCommands: [], forbiddenCommands: [],
+    ...overrides,
+});
 
 const mockTrajectory = (tools: string[]): TrajectoryMetrics => ({
     toolCallCount: tools.length,
@@ -52,7 +70,7 @@ describe('computeDiscoverability', () => {
 
     it('perfect score when all required tools used', () => {
         const result = computeDiscoverability(
-            { required: ['Bash', 'Write'], forbidden: [], optional: [] },
+            et({ required: ['Bash', 'Write'] }),
             mockTrajectory(['Bash', 'Write', 'Read']),
         )!;
         expect(result.discoverabilityScore).toBe(1.0);
@@ -63,7 +81,7 @@ describe('computeDiscoverability', () => {
 
     it('partial score when some required tools missing', () => {
         const result = computeDiscoverability(
-            { required: ['Bash', 'Write', 'Read'], forbidden: [], optional: [] },
+            et({ required: ['Bash', 'Write', 'Read'] }),
             mockTrajectory(['Bash']),
         )!;
         expect(result.discoverabilityScore).toBeCloseTo(1 / 3);
@@ -73,7 +91,7 @@ describe('computeDiscoverability', () => {
 
     it('detects forbidden tool usage', () => {
         const result = computeDiscoverability(
-            { required: ['Bash'], forbidden: ['WebSearch'], optional: [] },
+            et({ required: ['Bash'], forbidden: ['WebSearch'] }),
             mockTrajectory(['Bash', 'WebSearch']),
         )!;
         expect(result.forbiddenToolsUsed).toEqual(['WebSearch']);
@@ -83,16 +101,51 @@ describe('computeDiscoverability', () => {
 
     it('optional tools not counted as extra', () => {
         const result = computeDiscoverability(
-            { required: ['Bash'], forbidden: [], optional: ['Read', 'Edit'] },
+            et({ required: ['Bash'], optional: ['Read', 'Edit'] }),
             mockTrajectory(['Bash', 'Read']),
         )!;
         expect(result.extraTools).toEqual([]);
         expect(result.strictScore).toBe(1.0);
     });
 
+    it('requiredCommands checked in commandsExecuted', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.commandsExecuted = ['apify actors call apify/google-search-scraper -i ...', 'jq .items /tmp/serp.json'];
+        const result = computeDiscoverability(
+            et({ required: ['Bash'], requiredCommands: ['apify actors call'] }),
+            traj,
+        )!;
+        expect(result.missingCommands).toEqual([]);
+        expect(result.discoverabilityScore).toBe(1.0);
+        expect(result.strictScore).toBe(1.0);
+    });
+
+    it('missing requiredCommand lowers score', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.commandsExecuted = ['curl https://example.com'];
+        const result = computeDiscoverability(
+            et({ required: ['Bash'], requiredCommands: ['apify actors call'] }),
+            traj,
+        )!;
+        expect(result.missingCommands).toEqual(['apify actors call']);
+        expect(result.discoverabilityScore).toBe(0.5);
+        expect(result.strictScore).toBe(0.0);
+    });
+
+    it('forbiddenCommands detected', () => {
+        const traj = mockTrajectory(['Bash']);
+        traj.commandsExecuted = ['curl https://example.com', 'wget https://evil.com'];
+        const result = computeDiscoverability(
+            et({ required: ['Bash'], forbiddenCommands: ['wget'] }),
+            traj,
+        )!;
+        expect(result.forbiddenCommandsUsed).toEqual(['wget']);
+        expect(result.strictScore).toBe(0.0);
+    });
+
     it('zero required = score 1.0', () => {
         const result = computeDiscoverability(
-            { required: [], forbidden: ['WebSearch'], optional: ['Bash'] },
+            et({ forbidden: ['WebSearch'], optional: ['Bash'] }),
             mockTrajectory(['Bash']),
         )!;
         expect(result.discoverabilityScore).toBe(1.0);

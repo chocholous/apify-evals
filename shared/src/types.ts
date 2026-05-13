@@ -2,6 +2,8 @@ export interface ExpectedTools {
     required: string[];
     forbidden: string[];
     optional: string[];
+    requiredCommands: string[];
+    forbiddenCommands: string[];
 }
 
 export interface ScenarioMeta {
@@ -102,8 +104,10 @@ export interface DiscoverabilityMetrics {
     missingTools: string[];
     extraTools: string[];
     forbiddenToolsUsed: string[];
+    missingCommands: string[];
+    forbiddenCommandsUsed: string[];
     discoverabilityScore: number;   // |required ∩ actual| / |required| (0-1)
-    strictScore: number;            // 1.0 if no missing + no forbidden
+    strictScore: number;            // 1.0 if no missing + no forbidden (tools + commands)
 }
 
 export interface ModelUsage {

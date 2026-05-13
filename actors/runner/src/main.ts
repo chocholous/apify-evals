@@ -33,11 +33,21 @@ function computeDiscoverability(expected: ExpectedTools | undefined, trajectory:
     const extraTools = actual.filter((t) => !allowedSet.has(t) && !expected.forbidden.includes(t));
     const forbiddenToolsUsed = expected.forbidden.filter((t) => actualSet.has(t));
 
+    const commands = trajectory.commandsExecuted;
+    const missingCommands = expected.requiredCommands.filter(
+        (pattern) => !commands.some((cmd) => cmd.includes(pattern)),
+    );
+    const forbiddenCommandsUsed = expected.forbiddenCommands.filter(
+        (pattern) => commands.some((cmd) => cmd.includes(pattern)),
+    );
+
     const foundRequired = expected.required.filter((t) => actualSet.has(t));
-    const discoverabilityScore = expected.required.length > 0
-        ? foundRequired.length / expected.required.length
-        : 1.0;
-    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0) ? 1.0 : 0.0;
+    const foundRequiredCommands = expected.requiredCommands.length - missingCommands.length;
+    const totalRequired = expected.required.length + expected.requiredCommands.length;
+    const totalFound = foundRequired.length + foundRequiredCommands;
+    const discoverabilityScore = totalRequired > 0 ? totalFound / totalRequired : 1.0;
+    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0
+        && missingCommands.length === 0 && forbiddenCommandsUsed.length === 0) ? 1.0 : 0.0;
 
     return {
         expectedRequired: expected.required,
@@ -47,6 +57,8 @@ function computeDiscoverability(expected: ExpectedTools | undefined, trajectory:
         missingTools,
         extraTools,
         forbiddenToolsUsed,
+        missingCommands,
+        forbiddenCommandsUsed,
         discoverabilityScore,
         strictScore,
     };
