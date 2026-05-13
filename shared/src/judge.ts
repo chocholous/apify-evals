@@ -25,6 +25,7 @@ function resolveJudgeFn(mode: JudgeMode | undefined, env?: Record<string, string
 export interface CheckpointSpec {
     type: CheckType;
     value: string;
+    severity: 'fail' | 'warning';
 }
 
 export interface ParsedCheckpoint {
@@ -59,7 +60,7 @@ function parseSubsections(checkpoint: string): ParsedCheckpoint {
     if (scriptMatch) {
         const scriptValue = scriptMatch[1].trim();
         if (scriptValue) {
-            checks.push({ type: 'script', value: scriptValue });
+            checks.push({ type: 'script', value: scriptValue, severity: 'fail' });
         }
     }
 
@@ -96,17 +97,21 @@ function parseFlatCheckpoint(checkpoint: string): ParsedCheckpoint {
 }
 
 function parseCheckpointLine(line: string): CheckpointSpec | null {
-    if (line.startsWith('contains:')) {
-        return { type: 'contains', value: line.slice('contains:'.length).trim() };
+    const warn = line.startsWith('warn-');
+    const severity = warn ? 'warning' as const : 'fail' as const;
+    const stripped = warn ? line.slice(5) : line;
+
+    if (stripped.startsWith('contains:')) {
+        return { type: 'contains', value: stripped.slice('contains:'.length).trim(), severity };
     }
-    if (line.startsWith('regex:')) {
-        return { type: 'regex', value: line.slice('regex:'.length).trim() };
+    if (stripped.startsWith('regex:')) {
+        return { type: 'regex', value: stripped.slice('regex:'.length).trim(), severity };
     }
-    if (line.startsWith('json-schema:')) {
-        return { type: 'json-schema', value: line.slice('json-schema:'.length).trim() };
+    if (stripped.startsWith('json-schema:')) {
+        return { type: 'json-schema', value: stripped.slice('json-schema:'.length).trim(), severity };
     }
-    if (line.startsWith('script:')) {
-        return { type: 'script', value: line.slice('script:'.length).trim() };
+    if (stripped.startsWith('script:')) {
+        return { type: 'script', value: stripped.slice('script:'.length).trim(), severity };
     }
     return null;
 }
@@ -117,7 +122,7 @@ export interface ScriptJudgeOptions {
     env?: Record<string, string>;
 }
 
-function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions): CheckVerdict {
+function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions, failVerdict: VerdictValue = 'fail'): CheckVerdict {
     const timeoutMs = options?.timeoutMs ?? SCRIPT_TIMEOUT_MS;
     try {
         const stdout = execSync(script, {
@@ -136,13 +141,13 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             const stdout = error.stdout?.toString().trim().slice(0, 500) ?? '';
             const stderr = error.stderr?.toString().trim().slice(0, 500) ?? '';
             const evidence = stdout || stderr || `Script exited with code ${error.status}`;
-            return { checkType: 'script', checkValue: script, verdict: 'fail', evidence, confidence: 1.0 };
+            return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence, confidence: 1.0 };
         }
         const msg = error.message ?? String(err);
         if (msg.includes('ETIMEDOUT') || msg.includes('timed out')) {
-            return { checkType: 'script', checkValue: script, verdict: 'fail', evidence: `Script timed out after ${timeoutMs}ms`, confidence: 1.0 };
+            return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence: `Script timed out after ${timeoutMs}ms`, confidence: 1.0 };
         }
-        return { checkType: 'script', checkValue: script, verdict: 'fail', evidence: `Script error: ${msg.slice(0, 500)}`, confidence: 1.0 };
+        return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence: `Script error: ${msg.slice(0, 500)}`, confidence: 1.0 };
     }
 }
 
@@ -199,13 +204,15 @@ function judgeJsonSchema(agentOutput: string, schemaStr: string): CheckVerdict {
 }
 
 function judgeDeterministicCheck(agentOutput: string, spec: CheckpointSpec, options?: ScriptJudgeOptions): CheckVerdict {
+    const failVerdict = spec.severity === 'warning' ? 'warning' as const : 'fail' as const;
+
     switch (spec.type) {
         case 'contains': {
             const found = agentOutput.toLowerCase().includes(spec.value.toLowerCase());
             return {
                 checkType: 'contains',
                 checkValue: spec.value,
-                verdict: found ? 'pass' : 'fail',
+                verdict: found ? 'pass' : failVerdict,
                 evidence: found
                     ? `Output contains "${spec.value}"`
                     : `Output does not contain "${spec.value}"`,
@@ -219,7 +226,7 @@ function judgeDeterministicCheck(agentOutput: string, spec: CheckpointSpec, opti
                 return {
                     checkType: 'regex',
                     checkValue: spec.value,
-                    verdict: match ? 'pass' : 'fail',
+                    verdict: match ? 'pass' : failVerdict,
                     evidence: match
                         ? `Output matches regex /${spec.value}/i`
                         : `Output does not match regex /${spec.value}/i`,
@@ -229,7 +236,7 @@ function judgeDeterministicCheck(agentOutput: string, spec: CheckpointSpec, opti
                 return {
                     checkType: 'regex',
                     checkValue: spec.value,
-                    verdict: 'fail',
+                    verdict: failVerdict,
                     evidence: `Invalid regex: ${spec.value}`,
                     confidence: 1.0,
                 };
@@ -238,9 +245,9 @@ function judgeDeterministicCheck(agentOutput: string, spec: CheckpointSpec, opti
         case 'json-schema':
             return judgeJsonSchema(agentOutput, spec.value);
         case 'script':
-            return judgeScript(agentOutput, spec.value, options);
+            return judgeScript(agentOutput, spec.value, options, failVerdict);
         default:
-            return { checkType: spec.type, checkValue: spec.value, verdict: 'fail', evidence: `Unknown check type: ${spec.type}`, confidence: 1.0 };
+            return { checkType: spec.type, checkValue: spec.value, verdict: failVerdict, evidence: `Unknown check type: ${spec.type}`, confidence: 1.0 };
     }
 }
 
@@ -392,6 +399,7 @@ export async function judgeAllChecks(
 function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
     if (verdicts.length === 0) return 'unclear';
     if (verdicts.some((v) => v.verdict === 'fail')) return 'fail';
+    if (verdicts.some((v) => v.verdict === 'warning')) return 'warning';
     if (verdicts.some((v) => v.verdict === 'unclear')) return 'unclear';
     return 'pass';
 }

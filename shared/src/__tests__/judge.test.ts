@@ -68,9 +68,9 @@ The answer must be scientifically accurate.`;
 
         const result = parseCheckpointSection(checkpoint);
         expect(result.checks).toHaveLength(3);
-        expect(result.checks[0]).toEqual({ type: 'contains', value: 'Jupiter' });
-        expect(result.checks[1]).toEqual({ type: 'regex', value: '\\blargest\\b' });
-        expect(result.checks[2]).toEqual({ type: 'script', value: './validators/check.sh' });
+        expect(result.checks[0]).toEqual({ type: 'contains', value: 'Jupiter', severity: 'fail' });
+        expect(result.checks[1]).toEqual({ type: 'regex', value: '\\blargest\\b', severity: 'fail' });
+        expect(result.checks[2]).toEqual({ type: 'script', value: './validators/check.sh', severity: 'fail' });
         expect(result.judgePrompt).toBe('The answer must be scientifically accurate.');
     });
 

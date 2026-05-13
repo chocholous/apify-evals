@@ -306,7 +306,7 @@ for (let i = 0; i < tests.length; i++) {
         const disc = computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? EMPTY_TRAJECTORY);
         if (disc && meta.expectedTools) {
             const sev = meta.expectedTools.severity;
-            const verdictValue = sev === 'fail' ? 'fail' as const : 'unclear' as const;
+            const verdictValue = sev === 'fail' ? 'fail' as const : 'warning' as const;
 
             if (disc.missingTools.length > 0) {
                 judgeResult.verdicts.push({
@@ -341,8 +341,9 @@ for (let i = 0; i < tests.length; i++) {
 
             // Recompute overallVerdict with discoverability
             const hasFail = judgeResult.verdicts.some((v) => v.verdict === 'fail');
+            const hasWarning = judgeResult.verdicts.some((v) => v.verdict === 'warning');
             const hasUnclear = judgeResult.verdicts.some((v) => v.verdict === 'unclear');
-            judgeResult.overallVerdict = hasFail ? 'fail' : hasUnclear ? 'unclear' : 'pass';
+            judgeResult.overallVerdict = hasFail ? 'fail' : hasWarning ? 'warning' : hasUnclear ? 'unclear' : 'pass';
         }
 
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
