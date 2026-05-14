@@ -198,11 +198,8 @@ for (let i = 0; i < tests.length; i++) {
             pluginDirs: currentPluginDirs.length > 0 ? currentPluginDirs : undefined,
             abortSignal: abortController.signal,
             onRawLine: (line) => {
-                rawLineCount++;
                 rawLines.push(line);
-                if (rawLineCount % 20 === 0) {
-                    Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
-                }
+                Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
             },
             onEvent: (event) => {
                 if (event.type === 'assistant' && event.message?.content) {
