@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 
 import { JUDGE_MODEL } from '../constants.js';
 
@@ -8,6 +9,7 @@ export interface ClaudeJudgeOptions {
     model?: string;
     maxRetries?: number;
     env?: Record<string, string>;
+    onRawLine?: (line: string) => void;
 }
 
 export interface JudgeLlmResult {
@@ -53,7 +55,9 @@ Evaluate carefully and return your verdict.`;
 
         const child = spawn('claude', [
             '-p', prompt,
-            '--output-format', 'json',
+            '--output-format', 'stream-json',
+            '--verbose',
+            '--include-partial-messages',
             '--json-schema', VERDICT_SCHEMA,
             '--model', options.model ?? JUDGE_MODEL,
             '--dangerously-skip-permissions',
@@ -69,22 +73,32 @@ Evaluate carefully and return your verdict.`;
             resolve({ result: null, error: `Judge timed out after ${JUDGE_TIMEOUT_MS / 1000}s` });
         }, JUDGE_TIMEOUT_MS);
 
-        let stdout = '';
+        let resultEvent: Record<string, unknown> | null = null;
         let stderr = '';
-        child.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
-        child.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+        const rl = createInterface({ input: child.stdout! });
+        rl.on('line', (line) => {
+            if (!line.trim()) return;
+            options.onRawLine?.(line);
+            try {
+                const event = JSON.parse(line) as Record<string, unknown>;
+                if (event.type === 'result') {
+                    resultEvent = event;
+                }
+            } catch { /* skip non-JSON */ }
+        });
+
+        child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
         child.on('close', (code) => {
             clearTimeout(timer);
-            try {
-                const parsed = JSON.parse(stdout);
-                if (parsed.structured_output) {
-                    resolve({ result: parsed.structured_output, error: null });
-                } else {
-                    resolve({ result: null, error: `No structured_output (code=${code}, errors=${parsed.errors?.join(', ') ?? 'none'})` });
-                }
-            } catch {
-                resolve({ result: null, error: `JSON parse failed (code=${code}, stderr=${stderr.slice(0, 200)})` });
+            if (resultEvent?.structured_output) {
+                resolve({ result: resultEvent.structured_output as JudgeLlmResult, error: null });
+            } else {
+                const errors = resultEvent
+                    ? `is_error=${resultEvent.is_error}, stop=${resultEvent.stop_reason}`
+                    : 'no result event';
+                resolve({ result: null, error: `No structured_output (code=${code}, ${errors}, stderr=${stderr.slice(0, 200)})` });
             }
         });
 

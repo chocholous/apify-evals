@@ -25,7 +25,7 @@ Agenti jsou definovaní v `shared/src/agents/registry.ts`. Každý agent má com
 
 | Agent | Command | Key flags | Output |
 |-------|---------|-----------|--------|
-| `claude-code` | `claude -p "prompt"` | `--output-format stream-json --verbose --dangerously-skip-permissions --no-session-persistence` | NDJSON |
+| `claude-code` | `claude -p "prompt"` | `--output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --no-session-persistence` | NDJSON |
 | `codex` | `codex exec "prompt"` | `--json --dangerously-bypass-approvals-and-sandbox --ephemeral` | NDJSON |
 | `opencode` | `opencode run "prompt"` | `--format json --dangerously-skip-permissions` | NDJSON |
 
@@ -33,7 +33,7 @@ Agenti jsou definovaní v `shared/src/agents/registry.ts`. Každý agent má com
 
 Agenti se spouštějí jako subprocess přes `child_process.spawn()`. Výstup se parsuje per-agent:
 
-- **Claude:** `assistant` events → text + tool_use, `result` event → metrics
+- **Claude:** `assistant` events → text + tool_use, `result` event → metrics, `stream_event` → real-time delty (text_delta, thinking_delta) díky `--include-partial-messages`
 - **Codex:** `item.completed` (type=agent_message) → text, `turn.completed` → usage (kumulativní)
 - **OpenCode:** `text` event (s `time.end`) → text, `step_finish` → per-step tokens + cost
 
@@ -186,25 +186,15 @@ Nic dalšího v inputu není potřeba — `pluginDirs` se nespecifikuje, detekce
 
 ## LLM Judge
 
-Judge má dva backendy, vybraný přes `judgeMode` input (`auto` | `cli` | `sdk`):
+Jediný backend: CLI judge (`shared/src/agents/claude.ts`).
 
-### CLI judge (výchozí fallback)
-- `claude -p --json-schema` subprocess
-- Model: `claude-haiku-4-5-20251001`
-- Vyžaduje `--max-turns 3` (interní tool call pro json-schema)
-- Structured output v `result.structured_output` field
+### CLI judge
+- `claude -p --output-format stream-json --verbose --include-partial-messages --json-schema` subprocess
+- Model: `claude-sonnet-4-6` (konstanta `JUDGE_MODEL` v `constants.ts`)
+- NDJSON readline-based parsing (stejný pattern jako agent)
+- `structured_output` extrahován z `result` eventu
+- `stream_event` eventy dostupné přes `onRawLine` callback pro real-time monitoring
 - Žádný API klíč potřeba (OAuth/subscription stačí)
-- Latence: ~3-5s
-
-### SDK judge (preferovaný pokud API key dostupný)
-- `@anthropic-ai/sdk` s `tool_use` pattern (`submit_verdict` tool)
-- Model: `claude-haiku-4-5-20251001`
-- Vyžaduje `ANTHROPIC_API_KEY` v `envVariables`
-- Latence: ~0.5-1s (~5× rychlejší)
-- Implementace: `shared/src/agents/judge-sdk.ts`
-
-### Auto-detekce (`judgeMode: 'auto'`)
-Funkce `resolveJudgeFn()` v `judge.ts`: pokud `ANTHROPIC_API_KEY` existuje v env → SDK, jinak → CLI.
 
 Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
 

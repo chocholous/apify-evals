@@ -279,6 +279,43 @@ describe('parseClaudeStream', () => {
         expect((detail.input.content as string).length).toBe(500);
     });
 
+    it('ignores stream_event events from --include-partial-messages', () => {
+        const events: AgentEvent[] = [
+            { type: 'stream_event', event: { type: 'message_start' } } as unknown as AgentEvent,
+            { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } } as unknown as AgentEvent,
+            { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } } } as unknown as AgentEvent,
+            { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' world' } } } as unknown as AgentEvent,
+            { type: 'stream_event', event: { type: 'content_block_stop', index: 0 } } as unknown as AgentEvent,
+            {
+                type: 'assistant',
+                message: {
+                    model: 'claude-sonnet-4-6',
+                    content: [{ type: 'text', text: 'Hello world' }],
+                    usage: { input_tokens: 100, output_tokens: 10 },
+                },
+            },
+            { type: 'stream_event', event: { type: 'message_delta', delta: { stop_reason: 'end_turn' } } } as unknown as AgentEvent,
+            { type: 'stream_event', event: { type: 'message_stop' } } as unknown as AgentEvent,
+            {
+                type: 'result',
+                is_error: false,
+                stop_reason: 'end_turn',
+                total_cost_usd: 0.001,
+                num_turns: 1,
+                duration_ms: 1000,
+                duration_api_ms: 800,
+                usage: { input_tokens: 100, output_tokens: 10 },
+            },
+        ];
+
+        const parsed = parseClaudeStream(events);
+        expect(parsed.getText()).toBe('Hello world');
+        expect(parsed.getMetrics().totalCostUsd).toBe(0.001);
+        expect(parsed.getError()).toBeNull();
+        expect(parsed.getStopReason()).toBe('end_turn');
+        expect(parsed.getTrajectoryData().toolCalls).toEqual([]);
+    });
+
     it('extracts file ops from Bash commands', () => {
         const events: AgentEvent[] = [
             {

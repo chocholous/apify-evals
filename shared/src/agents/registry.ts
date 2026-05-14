@@ -22,7 +22,7 @@ export const AGENT_REGISTRY: Record<string, AgentDef> = {
         subcommand: null,
         promptFlag: '-p',
         systemPromptFlag: '--system-prompt',
-        outputFlags: ['--output-format', 'stream-json', '--verbose'],
+        outputFlags: ['--output-format', 'stream-json', '--verbose', '--include-partial-messages'],
         permissionFlags: ['--dangerously-skip-permissions'],
         sessionFlags: ['--no-session-persistence'],
         modelFlag: '--model',
