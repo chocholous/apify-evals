@@ -1,0 +1,6 @@
+{
+    "agent": "claude-code",
+    "scenario": "---\nname: multi-judge-demo\ndescription: Demonstrates multiple LLM judge blocks with severity and per-judge model\nabortOnFailure: false\n---\n\n## Test\nCreate a TypeScript function that fetches a URL and returns the response body as a string. Include error handling for network failures and HTTP errors. Save it to /tmp/fetcher.ts.\n\n## Checkpoint\n\n### Checks\ncontains: fetch\nscript: test -f /tmp/fetcher.ts && echo \"file exists\"\n\n### Judge\nThe function must handle both network errors (e.g. DNS failure) and HTTP errors (e.g. 404, 500) separately, not with a single catch-all.\n\n### Judge (opus)\nEvaluate the TypeScript code quality: proper typing (no `any`), async/await usage, and whether the error handling covers edge cases.\n\n### warn-Judge (haiku)\nDoes the code include JSDoc or inline comments explaining the error handling strategy?\n",
+    "maxTurns": 10,
+    "maxBudgetUsd": 1.00
+}

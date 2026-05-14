@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import { parseCheckpointSection, judgeAllChecks } from '../judge.js';
+import { parseScenario } from '../index.js';
 
 describe('parseCheckpointSection — flat format', () => {
     it('parses single deterministic check', () => {
@@ -372,6 +375,70 @@ describe('judgeAllChecks — multiple checks', () => {
         const r = await judgeAllChecks('some output', '');
         expect(r.overallVerdict).toBe('unclear');
         expect(r.verdicts).toHaveLength(0);
+    });
+});
+
+describe('checkpoint-syntax-demo.md — full syntax coverage', () => {
+    const scenarioPath = join(import.meta.dirname, '../../../scenarios/checkpoint-syntax-demo.md');
+    const scenario = parseScenario(readFileSync(scenarioPath, 'utf-8'));
+
+    it('parses 3 tests', () => {
+        expect(scenario.tests).toHaveLength(3);
+    });
+
+    it('test 1: flat format — deterministic checks + plain text judge', () => {
+        const parsed = parseCheckpointSection(scenario.tests[0].checkpoint);
+        expect(parsed.checks).toHaveLength(2);
+        expect(parsed.checks[0]).toEqual({ type: 'contains', value: 'Jupiter', severity: 'fail' });
+        expect(parsed.checks[1]).toEqual({ type: 'regex', value: '\\b(largest|biggest)\\b', severity: 'fail' });
+        expect(parsed.judges).toHaveLength(1);
+        expect(parsed.judges[0].severity).toBe('fail');
+        expect(parsed.judges[0].model).toBeUndefined();
+        expect(parsed.judges[0].prompt).toContain('gas giant');
+    });
+
+    it('test 2: subsections — all check types, script, 3 judge blocks with severity+model', () => {
+        const parsed = parseCheckpointSection(scenario.tests[1].checkpoint);
+
+        // ### Checks: contains, warn-contains, regex, warn-regex, json-schema
+        expect(parsed.checks).toHaveLength(6); // 5 check lines + 1 script
+        expect(parsed.checks[0]).toEqual({ type: 'contains', value: 'ok', severity: 'fail' });
+        expect(parsed.checks[1]).toEqual({ type: 'contains', value: 'syntax-demo', severity: 'warning' });
+        expect(parsed.checks[2]).toEqual({ type: 'regex', value: '"status"', severity: 'fail' });
+        expect(parsed.checks[3]).toEqual({ type: 'regex', value: 'created|wrote', severity: 'warning' });
+        expect(parsed.checks[4].type).toBe('json-schema');
+        expect(parsed.checks[4].severity).toBe('fail');
+
+        // ### Script
+        expect(parsed.checks[5].type).toBe('script');
+        expect(parsed.checks[5].value).toContain('jq -e');
+
+        // 3 judge blocks
+        expect(parsed.judges).toHaveLength(3);
+
+        // ### Judge (default model, fail severity)
+        expect(parsed.judges[0].severity).toBe('fail');
+        expect(parsed.judges[0].model).toBeUndefined();
+
+        // ### Judge (opus)
+        expect(parsed.judges[1].severity).toBe('fail');
+        expect(parsed.judges[1].model).toBe('claude-opus-4-6');
+
+        // ### warn-Judge (haiku)
+        expect(parsed.judges[2].severity).toBe('warning');
+        expect(parsed.judges[2].model).toBe('claude-haiku-4-5-20251001');
+    });
+
+    it('test 3: subsections — jq checks with warn- prefix + warn-Judge without model', () => {
+        const parsed = parseCheckpointSection(scenario.tests[2].checkpoint);
+
+        expect(parsed.checks).toHaveLength(2);
+        expect(parsed.checks[0]).toEqual(expect.objectContaining({ type: 'jq', severity: 'fail' }));
+        expect(parsed.checks[1]).toEqual(expect.objectContaining({ type: 'jq', severity: 'warning' }));
+
+        expect(parsed.judges).toHaveLength(1);
+        expect(parsed.judges[0].severity).toBe('warning');
+        expect(parsed.judges[0].model).toBeUndefined();
     });
 });
 
