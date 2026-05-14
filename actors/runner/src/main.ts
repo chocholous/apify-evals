@@ -200,7 +200,6 @@ for (let i = 0; i < tests.length; i++) {
             onRawLine: (line) => {
                 rawLineCount++;
                 rawLines.push(line);
-                if (rawLines.length > 500) rawLines.shift();
                 if (rawLineCount % 20 === 0) {
                     Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
                 }
