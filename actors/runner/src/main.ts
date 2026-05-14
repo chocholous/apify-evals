@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult, ExpectedTools, TrajectoryMetrics, DiscoverabilityMetrics } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult } from '@apify-evals/shared';
 
 interface RunnerInput {
     agent?: string;
@@ -20,60 +20,6 @@ interface RunnerInput {
     initBashScript?: string;
     mcpConfigJson?: Record<string, unknown>;
     judgeModel?: string;
-}
-
-function computeDiscoverability(expected: ExpectedTools | undefined, trajectory: TrajectoryMetrics): DiscoverabilityMetrics | null {
-    if (!expected) return null;
-
-    const actual = trajectory.uniqueToolsUsed;
-    const actualSet = new Set(actual);
-    const allowedSet = new Set([...expected.required, ...expected.optional]);
-
-    const missingTools = expected.required.filter((t) => !actualSet.has(t));
-    const extraTools = actual.filter((t) => !allowedSet.has(t) && !expected.forbidden.includes(t));
-    const forbiddenToolsUsed = expected.forbidden.filter((t) => actualSet.has(t));
-
-    const commands = trajectory.commandsExecuted;
-    const missingCommands = expected.requiredCommands.filter(
-        (pattern) => !commands.some((cmd) => cmd.includes(pattern)),
-    );
-    const forbiddenCommandsUsed = expected.forbiddenCommands.filter(
-        (pattern) => commands.some((cmd) => cmd.includes(pattern)),
-    );
-
-    const allFiles = [...trajectory.filesCreated, ...trajectory.filesModified];
-    const missingFiles = expected.requiredFiles.filter((pattern) => {
-        if (pattern.includes('*')) {
-            const regex = new RegExp(pattern.replace(/\./g, '\\.').replace(/\*/g, '.*'));
-            return !allFiles.some((f) => regex.test(f));
-        }
-        return !allFiles.some((f) => f.includes(pattern));
-    });
-
-    const foundRequired = expected.required.filter((t) => actualSet.has(t));
-    const foundRequiredCommands = expected.requiredCommands.length - missingCommands.length;
-    const foundRequiredFiles = expected.requiredFiles.length - missingFiles.length;
-    const totalRequired = expected.required.length + expected.requiredCommands.length + expected.requiredFiles.length;
-    const totalFound = foundRequired.length + foundRequiredCommands + foundRequiredFiles;
-    const discoverabilityScore = totalRequired > 0 ? totalFound / totalRequired : 1.0;
-    const strictScore = (missingTools.length === 0 && forbiddenToolsUsed.length === 0
-        && missingCommands.length === 0 && forbiddenCommandsUsed.length === 0
-        && missingFiles.length === 0) ? 1.0 : 0.0;
-
-    return {
-        expectedRequired: expected.required,
-        expectedForbidden: expected.forbidden,
-        expectedOptional: expected.optional,
-        actualTools: actual,
-        missingTools,
-        extraTools,
-        forbiddenToolsUsed,
-        missingCommands,
-        forbiddenCommandsUsed,
-        missingFiles,
-        discoverabilityScore,
-        strictScore,
-    };
 }
 
 await Actor.init();
@@ -303,50 +249,6 @@ for (let i = 0; i < tests.length; i++) {
             durationMs: judgeMs,
             timestamp: new Date().toISOString(),
         }));
-        // Add discoverability checks as verdicts
-        const disc = computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? EMPTY_TRAJECTORY);
-        if (disc && meta.expectedTools) {
-            const sev = meta.expectedTools.severity;
-            const verdictValue = sev === 'fail' ? 'fail' as const : 'warning' as const;
-
-            if (disc.missingTools.length > 0) {
-                judgeResult.verdicts.push({
-                    checkType: 'discoverability', checkValue: `required tools: ${disc.missingTools.join(', ')}`,
-                    verdict: verdictValue, evidence: `Missing required tools: ${disc.missingTools.join(', ')}`, confidence: 1,
-                });
-            }
-            if (disc.forbiddenToolsUsed.length > 0) {
-                judgeResult.verdicts.push({
-                    checkType: 'discoverability', checkValue: `forbidden tools: ${disc.forbiddenToolsUsed.join(', ')}`,
-                    verdict: verdictValue, evidence: `Used forbidden tools: ${disc.forbiddenToolsUsed.join(', ')}`, confidence: 1,
-                });
-            }
-            if (disc.missingCommands.length > 0) {
-                judgeResult.verdicts.push({
-                    checkType: 'discoverability', checkValue: `required commands: ${disc.missingCommands.join(', ')}`,
-                    verdict: verdictValue, evidence: `Missing required commands: ${disc.missingCommands.join(', ')}`, confidence: 1,
-                });
-            }
-            if (disc.forbiddenCommandsUsed.length > 0) {
-                judgeResult.verdicts.push({
-                    checkType: 'discoverability', checkValue: `forbidden commands: ${disc.forbiddenCommandsUsed.join(', ')}`,
-                    verdict: verdictValue, evidence: `Used forbidden commands: ${disc.forbiddenCommandsUsed.join(', ')}`, confidence: 1,
-                });
-            }
-            if (disc.missingFiles.length > 0) {
-                judgeResult.verdicts.push({
-                    checkType: 'discoverability', checkValue: `required files: ${disc.missingFiles.join(', ')}`,
-                    verdict: verdictValue, evidence: `Missing required files: ${disc.missingFiles.join(', ')}`, confidence: 1,
-                });
-            }
-
-            // Recompute overallVerdict with discoverability
-            const hasFail = judgeResult.verdicts.some((v) => v.verdict === 'fail');
-            const hasWarning = judgeResult.verdicts.some((v) => v.verdict === 'warning');
-            const hasUnclear = judgeResult.verdicts.some((v) => v.verdict === 'unclear');
-            judgeResult.overallVerdict = hasFail ? 'fail' : hasWarning ? 'warning' : hasUnclear ? 'unclear' : 'pass';
-        }
-
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
         for (const v of judgeResult.verdicts) {
             const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
@@ -373,7 +275,6 @@ for (let i = 0; i < tests.length; i++) {
         metrics: lastRunResult?.metrics ?? EMPTY_METRICS,
         efficiency: lastRunResult?.efficiency ?? EMPTY_EFFICIENCY,
         trajectory: lastRunResult?.trajectory ?? EMPTY_TRAJECTORY,
-        discoverability: computeDiscoverability(meta.expectedTools, lastRunResult?.trajectory ?? EMPTY_TRAJECTORY),
         judge: { judgeCostUsd: 0, judgeLatencyMs: judgeMs, judgeTurns: judgeResult.verdicts.filter((v) => v.checkType === 'llm-judge').length },
         retryAttempts: attempt,
         stopReason: lastRunResult?.stopReason ?? 'unknown',

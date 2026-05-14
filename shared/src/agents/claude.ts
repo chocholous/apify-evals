@@ -14,8 +14,7 @@ export interface ClaudeJudgeOptions {
 
 export interface JudgeLlmResult {
     verdict: string;
-    evidence: string;
-    confidence: number;
+    reasoning: string;
 }
 
 const VERDICT_SCHEMA = JSON.stringify({
@@ -26,16 +25,12 @@ const VERDICT_SCHEMA = JSON.stringify({
             enum: ['pass', 'fail', 'unclear'],
             description: 'pass = checkpoint fully satisfied, fail = clearly not satisfied, unclear = cannot determine',
         },
-        evidence: {
+        reasoning: {
             type: 'string',
-            description: 'Specific evidence from the agent output that supports your verdict. Quote relevant parts.',
-        },
-        confidence: {
-            type: 'number',
-            description: 'Confidence in your verdict (0.0 to 1.0)',
+            description: 'Your reasoning for the verdict. Reference specific evidence from the agent output.',
         },
     },
-    required: ['verdict', 'evidence', 'confidence'],
+    required: ['verdict', 'reasoning'],
 });
 
 function judgeLlmOnce(options: ClaudeJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
@@ -51,7 +46,7 @@ ${options.agentOutput}
 ## Checkpoint Criteria
 ${options.checkpoint}
 
-Evaluate carefully and return your verdict.`;
+Evaluate carefully. Return your verdict (pass/fail/unclear) with reasoning that references specific evidence from the output.`;
 
         const child = spawn('claude', [
             '-p', prompt,

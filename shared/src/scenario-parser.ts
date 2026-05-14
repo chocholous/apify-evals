@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
 
-import type { ParsedScenario, ScenarioMeta, TestCase, ExpectedTools, ExpectedToolCall } from './types.js';
+import type { ParsedScenario, ScenarioMeta, TestCase, ExpectedToolCall } from './types.js';
 
 export class ScenarioParseError extends Error {
     constructor(message: string) {
@@ -16,25 +16,10 @@ export function parseScenario(markdown: string): ParsedScenario {
 
     const { data, content } = matter(markdown);
 
-    let expectedTools: ExpectedTools | undefined;
-    if (data.expectedTools) {
-        const et = data.expectedTools;
-        expectedTools = {
-            required: Array.isArray(et.required) ? et.required : [],
-            forbidden: Array.isArray(et.forbidden) ? et.forbidden : [],
-            optional: Array.isArray(et.optional) ? et.optional : [],
-            requiredCommands: Array.isArray(et.requiredCommands) ? et.requiredCommands : [],
-            forbiddenCommands: Array.isArray(et.forbiddenCommands) ? et.forbiddenCommands : [],
-            requiredFiles: Array.isArray(et.requiredFiles) ? et.requiredFiles : [],
-            severity: et.severity === 'fail' ? 'fail' : 'warning',
-        };
-    }
-
     const meta: ScenarioMeta = {
         name: data.name ?? 'unnamed',
         description: data.description ?? '',
         abortOnFailure: data.abortOnFailure ?? false,
-        expectedTools,
     };
 
     if (!meta.name || meta.name === 'unnamed') {

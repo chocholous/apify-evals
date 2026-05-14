@@ -143,7 +143,6 @@ export function endJudgeSpan(span: Span, result: JudgeResult, durationMs: number
 function addVerdictEvent(span: Span, verdict: CheckVerdict): void {
     span.addEvent('check_verdict', {
         'gen_ai.evaluation.name': verdict.checkType,
-        'gen_ai.evaluation.score.value': verdict.confidence,
         'gen_ai.evaluation.score.label': verdict.verdict,
         'gen_ai.evaluation.explanation': verdict.evidence.slice(0, 500),
     });

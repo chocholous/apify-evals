@@ -80,7 +80,7 @@ function makeMockAgentResult(overrides?: Partial<AgentRunResult>): AgentRunResul
 function makeMockJudgeResult(overrides?: Partial<JudgeResult>): JudgeResult {
     return {
         verdicts: [
-            { checkType: 'contains', checkValue: 'test', verdict: 'pass', evidence: 'found', confidence: 1.0 },
+            { checkType: 'contains', checkValue: 'test', verdict: 'pass', evidence: 'found' },
         ],
         overallVerdict: 'pass',
         ...overrides,
@@ -194,8 +194,8 @@ describe('OTel instrumentation', () => {
     it('startJudgeSpan + endJudgeSpan adds verdict events', async () => {
         const mockJudge = makeMockJudgeResult({
             verdicts: [
-                { checkType: 'contains', checkValue: 'test', verdict: 'pass', evidence: 'found it', confidence: 1.0 },
-                { checkType: 'regex', checkValue: '\\d+', verdict: 'fail', evidence: 'no match', confidence: 1.0 },
+                { checkType: 'contains', checkValue: 'test', verdict: 'pass', evidence: 'found it' },
+                { checkType: 'regex', checkValue: '\\d+', verdict: 'fail', evidence: 'no match' },
             ],
             overallVerdict: 'fail',
         });

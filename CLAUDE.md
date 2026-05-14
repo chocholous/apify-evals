@@ -92,8 +92,22 @@ jq -e '.count > 0' /tmp/result.json
 
 ### Judge
 Evaluate quality of the response.
+
+### Judge (opus)
+Deep analysis of code architecture.
+
+### warn-Judge (haiku)
+Optional: is error handling present?
 ```
-Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge` (case-insensitive).
+Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge`/`warn-Judge` (case-insensitive). Více `### Judge` bloků v jednom checkpointu je povoleno — každý = samostatný LLM call.
+
+**Judge modifikátory:**
+- `### Judge` — default model (sonnet), fail severity
+- `### Judge (opus)` — explicitní model (aliases: `haiku`, `sonnet`, `opus` nebo plné model ID)
+- `### warn-Judge` — warning severity (fail verdikt = warning, ne fail)
+- `### warn-Judge (haiku)` — kombinace
+
+**Judge JSON schema:** `{verdict: "pass"|"fail"|"unclear", reasoning: "string"}`
 
 ### Typy kontrol
 
@@ -103,7 +117,8 @@ Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge` (case-insensitive).
 | `regex:` | 1.0 | Case-insensitive regex test |
 | `json-schema:` | 1.0 | Ajv validace proti JSON Schema |
 | `script:` | 1.0 | Bash script, agent output na stdin, exit 0 = pass, stdout = evidence |
-| LLM judge | 0-1 | `claude-haiku-4-5-20251001` s `--json-schema`, max 2 retry |
+| `jq:` | 1.0 | jq výraz nad conversation events (JSON array), `-e` flag, exit 0 = pass |
+| LLM judge | 1.0 | `claude-sonnet-4-6` (default) s `--json-schema`, max 2 retry, per-block model override |
 
 ### Script checkpoint
 - Agent output přijde na **stdin**
@@ -111,6 +126,29 @@ Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge` (case-insensitive).
 - stdout = evidence (max 1000 znaků)
 - Timeout: 30s (konfigurovatelný přes `scriptTimeoutMs`)
 - Má přístup k env vars a working directory (vidí soubory co agent vytvořil)
+
+### jq checkpoint
+- Conversation events (JSON array) přijdou na **stdin** do `jq -e`
+- Výraz musí vrátit truthy hodnotu (exit 0 = pass, exit 1 = fail)
+- stdout = evidence, stderr = error info
+- Timeout: 30s (`JQ_TIMEOUT_MS`)
+- Podporuje `warn-jq:` prefix pro warning severity
+- Events mají strukturu: `[{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: "..."}}]}}]`
+
+**Běžné vzory:**
+```
+# Agent použil konkrétní tool
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length > 0
+
+# Agent zavolal apify actors call NEBO apify call (OR logika přes regex)
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command? // "" | select(test("apify (actors )?call"))] | length > 0
+
+# Agent NEPOUŽIL zakázané tools
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | .name | select(test("^Web(Search|Fetch)$"))] | length == 0
+
+# Kontrola konkrétního parametru v tool callu
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command? // "" | select(test("--user-agent"))] | length > 0
+```
 
 ## Output data model (`AgentResult`)
 
@@ -190,11 +228,17 @@ Jediný backend: CLI judge (`shared/src/agents/claude.ts`).
 
 ### CLI judge
 - `claude -p --output-format stream-json --verbose --include-partial-messages --json-schema` subprocess
-- Model: `claude-sonnet-4-6` (konstanta `JUDGE_MODEL` v `constants.ts`)
+- Default model: `claude-sonnet-4-6` (konstanta `JUDGE_MODEL` v `constants.ts`)
+- Per-judge model override přes `### Judge (model)` syntax (`haiku`/`sonnet`/`opus` alias nebo plné model ID)
 - NDJSON readline-based parsing (stejný pattern jako agent)
-- `structured_output` extrahován z `result` eventu
+- `structured_output` extrahován z `result` eventu: `{verdict: "pass"|"fail"|"unclear", reasoning: "string"}`
 - `stream_event` eventy dostupné přes `onRawLine` callback pro real-time monitoring
 - Žádný API klíč potřeba (OAuth/subscription stačí)
+
+### Více judge bloků
+- Checkpoint může mít N `### Judge` bloků — každý = samostatný LLM call → samostatný verdict
+- `### warn-Judge` = warning severity (fail verdikt se mapuje na warning, ne fail)
+- Agregace: jakýkoliv judge s fail severity a verdict=fail → celý checkpoint fail
 
 Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
 
@@ -224,7 +268,13 @@ DŮLEŽITÉ: `--max-budget-usd` je **soft limit**. Claude CLI kontroluje budget 
 
 Jeden fat `Dockerfile` v rootu instaluje všechny agent CLI (Claude, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input `agent`.
 `actor.json` má `dockerContextDir: "../../.."`, což umožňuje Dockerfile přistupovat k `shared/`.
-Deploy: `apify push --dir actors/runner`
+
+Deploy z monorepo rootu (ne z `actors/runner` — `dockerContextDir` by ukazoval mimo upload):
+```bash
+touch actors/runner/.actor/actor.json   # aktualizovat mtime, jinak CLI hlásí "modified there since modified locally"
+apify push --dir .
+```
+Pozn: `touch` je potřeba protože každý push aktualizuje `modifiedAt` na platformě, ale lokální mtime zůstává starší. Bez toho vyžaduje `--force`.
 
 ## Testy
 

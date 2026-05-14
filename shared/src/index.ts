@@ -9,7 +9,7 @@ export { initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, 
 export { spansToOtlpJson, BufferSpanExporter } from './otel-exporter.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
-export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, DiscoverabilityMetrics, JudgeMetrics, ExpectedTools, AgentEvent, ModelUsage, AgentType } from './types.js';
+export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, JudgeMetrics, AgentEvent, ModelUsage, AgentType } from './types.js';
 export type { JudgeLlmResult } from './agents/claude.js';
 export type { AgentRunOptions, AgentRunResult } from './agents/run.js';
 export type { AgentDef } from './agents/registry.js';

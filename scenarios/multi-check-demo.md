@@ -28,3 +28,6 @@ cat /tmp/eval-demo.json | jq -e '.count == 42'
 
 ### Judge
 The agent should have created the file and confirmed it exists.
+
+### warn-Judge (haiku)
+Did the agent verify the file content after creation (e.g. cat or read the file)?

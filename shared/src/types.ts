@@ -1,18 +1,7 @@
-export interface ExpectedTools {
-    required: string[];
-    forbidden: string[];
-    optional: string[];
-    requiredCommands: string[];
-    forbiddenCommands: string[];
-    requiredFiles: string[];
-    severity: 'fail' | 'warning';
-}
-
 export interface ScenarioMeta {
     name: string;
     description: string;
     abortOnFailure: boolean;
-    expectedTools?: ExpectedTools;
 }
 
 export interface ExpectedToolCall {
@@ -35,14 +24,13 @@ export interface ParsedScenario {
 
 export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'llm-judge' | 'discoverability' | 'error';
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'error';
 
 export interface CheckVerdict {
     checkType: CheckType;
     checkValue: string;
     verdict: VerdictValue;
     evidence: string;
-    confidence: number;
 }
 
 // Base token/cost metrics (raw from agent)
@@ -98,20 +86,6 @@ export interface TrajectoryMetrics {
     mcpToolsUsed: string[];
 }
 
-export interface DiscoverabilityMetrics {
-    expectedRequired: string[];
-    expectedForbidden: string[];
-    expectedOptional: string[];
-    actualTools: string[];
-    missingTools: string[];
-    extraTools: string[];
-    forbiddenToolsUsed: string[];
-    missingCommands: string[];
-    forbiddenCommandsUsed: string[];
-    missingFiles: string[];
-    discoverabilityScore: number;   // |required ∩ actual| / |required| (0-1)
-    strictScore: number;            // 1.0 if no missing + no forbidden (tools + commands + files)
-}
 
 export interface ModelUsage {
     inputTokens: number;
@@ -142,7 +116,6 @@ export interface AgentResult {
     metrics: RunMetrics;
     efficiency: EfficiencyMetrics;
     trajectory: TrajectoryMetrics;
-    discoverability: DiscoverabilityMetrics | null;
     judge: JudgeMetrics;
     retryAttempts: number;
     stopReason: string;

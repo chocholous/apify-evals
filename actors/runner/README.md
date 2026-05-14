@@ -64,7 +64,7 @@ Write one per line with a prefix:
 | `json-schema:` | Validates JSON output against schema | `json-schema: {"type":"object","required":["name"]}` |
 | `script:` | Bash script (agent output on stdin, exit 0 = pass) | `script: jq -e '.status == "ok"'` |
 
-### LLM Judge (smart, costs ~$0.001)
+### LLM Judge (smart, costs ~$0.001–$0.05)
 
 Any text without a prefix becomes a prompt for the LLM judge. It evaluates whether the agent's answer meets the criteria:
 
@@ -84,9 +84,9 @@ The answer should be factually accurate and mention at least one landmark.
 
 All three run: two deterministic checks + one LLM judge. Overall pass requires all to pass.
 
-### Multi-line scripts (use subsections)
+### Multi-line scripts and multiple judges (use subsections)
 
-For complex validation scripts, use the `###` subsection format:
+For complex validation, use the `###` subsection format. You can have **multiple `### Judge` blocks** — each runs as a separate LLM evaluation:
 
 ```markdown
 ## Checkpoint
@@ -107,7 +107,29 @@ fi
 
 ### Judge
 The response should clearly explain what was computed and why.
+
+### Judge (opus)
+Evaluate the code quality and architecture decisions in detail.
+
+### warn-Judge (haiku)
+Does the response include helpful comments or documentation?
 ```
+
+**Judge modifiers:**
+
+| Syntax | Severity | Model |
+|--------|----------|-------|
+| `### Judge` | fail | sonnet (default) |
+| `### Judge (opus)` | fail | opus |
+| `### Judge (haiku)` | fail | haiku |
+| `### warn-Judge` | warning | sonnet (default) |
+| `### warn-Judge (opus)` | warning | opus |
+
+- **fail severity** (default): if the judge returns `fail`, the overall checkpoint fails
+- **warning severity** (`warn-`): if the judge returns `fail`, it's recorded as a warning — it won't fail the checkpoint
+- **Model**: `haiku`, `sonnet`, `opus` (aliases) or a full model ID like `claude-opus-4-6`
+
+Each judge returns `{verdict, reasoning}` — verdict is `pass`, `fail`, or `unclear`.
 
 ## Expected tools (discoverability scoring)
 
@@ -133,18 +155,6 @@ expectedTools:
 Output includes `discoverability.discoverabilityScore` (0–1) and `discoverability.missingTools` / `forbiddenToolsUsed` arrays.
 
 For task-specific instructions (language, framework, constraints), put them directly in the `## Test` prompt or in the `systemPrompt` input.
-
-## Judge mode
-
-Control how the LLM judge runs via the `judgeMode` input:
-
-| Mode | How it works | When to use |
-|------|-------------|-------------|
-| `auto` (default) | Uses Anthropic SDK if `ANTHROPIC_API_KEY` is in env variables, falls back to `claude -p` CLI | Recommended — fastest available option |
-| `cli` | Always uses `claude -p --json-schema` | When you only have an OAuth token |
-| `sdk` | Always uses `@anthropic-ai/sdk` directly | When you want consistent fast judging (~5x faster) |
-
-The SDK judge uses `tool_use` with Claude Haiku for structured verdicts. Deterministic checks (contains, regex, json-schema, script) are unaffected by judge mode.
 
 ## Init presets
 
@@ -198,7 +208,7 @@ Each test produces one dataset item with full results, metrics, and trajectory:
     "monitorOutput": null,
     "verdicts": [
         { "checkType": "contains", "checkValue": "@alice", "verdict": "pass", "evidence": "Output contains \"@alice\"", "confidence": 1.0 },
-        { "checkType": "llm-judge", "checkValue": "The answer should...", "verdict": "pass", "evidence": "Agent correctly identified...", "confidence": 0.95 }
+        { "checkType": "llm-judge", "checkValue": "The answer should...", "verdict": "pass", "evidence": "Agent correctly identified the issue reporter @alice based on the GitHub API response.", "confidence": 1.0 }
     ],
     "overallVerdict": "pass",
     "metrics": {
@@ -271,7 +281,7 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 
 ## Scenario cookbook
 
-The repo includes 21 ready-to-use scenarios in the [`scenarios/`](../../scenarios/) directory:
+The repo includes 22 ready-to-use scenarios in the [`scenarios/`](../../scenarios/) directory:
 
 | Scenario | What it tests |
 |----------|--------------|

@@ -8,7 +8,7 @@ describe('parseCheckpointSection — flat format', () => {
         expect(result.checks).toHaveLength(1);
         expect(result.checks[0].type).toBe('contains');
         expect(result.checks[0].value).toBe('Jupiter');
-        expect(result.judgePrompt).toBeNull();
+        expect(result.judges).toHaveLength(0);
     });
 
     it('parses multiple deterministic checks', () => {
@@ -16,33 +16,38 @@ describe('parseCheckpointSection — flat format', () => {
         expect(result.checks).toHaveLength(2);
         expect(result.checks[0].type).toBe('contains');
         expect(result.checks[1].type).toBe('regex');
-        expect(result.judgePrompt).toBeNull();
+        expect(result.judges).toHaveLength(0);
     });
 
     it('extracts LLM judge prompt from plain text', () => {
         const result = parseCheckpointSection('contains: Jupiter\n\nThe answer must be scientifically accurate.');
         expect(result.checks).toHaveLength(1);
         expect(result.checks[0].type).toBe('contains');
-        expect(result.judgePrompt).toBe('The answer must be scientifically accurate.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('The answer must be scientifically accurate.');
+        expect(result.judges[0].severity).toBe('fail');
     });
 
     it('pure plain text = only LLM judge', () => {
         const result = parseCheckpointSection('The answer must mention Rayleigh scattering.');
         expect(result.checks).toHaveLength(0);
-        expect(result.judgePrompt).toBe('The answer must mention Rayleigh scattering.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('The answer must mention Rayleigh scattering.');
     });
 
     it('"contains:" in plain text is NOT parsed as a check', () => {
         const result = parseCheckpointSection('The output contains: at least 3 items and a summary.');
         expect(result.checks).toHaveLength(0);
-        expect(result.judgePrompt).toBe('The output contains: at least 3 items and a summary.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('The output contains: at least 3 items and a summary.');
     });
 
     it('checks stop at first non-prefixed line', () => {
         const result = parseCheckpointSection('contains: Jupiter\nThe answer also contains: scientific facts.');
         expect(result.checks).toHaveLength(1);
         expect(result.checks[0].value).toBe('Jupiter');
-        expect(result.judgePrompt).toBe('The answer also contains: scientific facts.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('The answer also contains: scientific facts.');
     });
 
     it('script: in flat format', () => {
@@ -71,7 +76,10 @@ The answer must be scientifically accurate.`;
         expect(result.checks[0]).toEqual({ type: 'contains', value: 'Jupiter', severity: 'fail' });
         expect(result.checks[1]).toEqual({ type: 'regex', value: '\\blargest\\b', severity: 'fail' });
         expect(result.checks[2]).toEqual({ type: 'script', value: './validators/check.sh', severity: 'fail' });
-        expect(result.judgePrompt).toBe('The answer must be scientifically accurate.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('The answer must be scientifically accurate.');
+        expect(result.judges[0].severity).toBe('fail');
+        expect(result.judges[0].model).toBeUndefined();
     });
 
     it('works with only ### Checks', () => {
@@ -81,7 +89,7 @@ regex: smallest`;
 
         const result = parseCheckpointSection(checkpoint);
         expect(result.checks).toHaveLength(2);
-        expect(result.judgePrompt).toBeNull();
+        expect(result.judges).toHaveLength(0);
     });
 
     it('works with only ### Judge', () => {
@@ -90,7 +98,8 @@ Evaluate the quality of the response.`;
 
         const result = parseCheckpointSection(checkpoint);
         expect(result.checks).toHaveLength(0);
-        expect(result.judgePrompt).toBe('Evaluate the quality of the response.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('Evaluate the quality of the response.');
     });
 
     it('accepts singular ### Check', () => {
@@ -120,7 +129,91 @@ Evaluate quality.`;
 
         const result = parseCheckpointSection(checkpoint);
         expect(result.checks).toHaveLength(1);
-        expect(result.judgePrompt).toBe('Evaluate quality.');
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].prompt).toBe('Evaluate quality.');
+    });
+
+    it('parses multiple ### Judge blocks', () => {
+        const checkpoint = `### Judge
+Check code correctness.
+
+### Judge
+Verify error handling.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(2);
+        expect(result.judges[0].prompt).toBe('Check code correctness.');
+        expect(result.judges[1].prompt).toBe('Verify error handling.');
+        expect(result.judges[0].severity).toBe('fail');
+        expect(result.judges[1].severity).toBe('fail');
+    });
+
+    it('parses ### warn-Judge with warning severity', () => {
+        const checkpoint = `### Judge
+Must pass this.
+
+### warn-Judge
+Nice to have quality.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(2);
+        expect(result.judges[0].severity).toBe('fail');
+        expect(result.judges[1].severity).toBe('warning');
+    });
+
+    it('parses ### Judge (model) with explicit model', () => {
+        const checkpoint = `### Judge (opus)
+Deep analysis needed.
+
+### Judge (haiku)
+Quick binary check.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(2);
+        expect(result.judges[0].model).toBe('claude-opus-4-6');
+        expect(result.judges[0].prompt).toBe('Deep analysis needed.');
+        expect(result.judges[1].model).toBe('claude-haiku-4-5-20251001');
+        expect(result.judges[1].prompt).toBe('Quick binary check.');
+    });
+
+    it('parses ### warn-Judge (opus) combining severity and model', () => {
+        const checkpoint = `### warn-Judge (opus)
+Optional deep check.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].severity).toBe('warning');
+        expect(result.judges[0].model).toBe('claude-opus-4-6');
+        expect(result.judges[0].prompt).toBe('Optional deep check.');
+    });
+
+    it('passes through full model IDs', () => {
+        const checkpoint = `### Judge (claude-sonnet-4-6)
+Custom model check.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].model).toBe('claude-sonnet-4-6');
+    });
+
+    it('mixed checks, scripts, and multiple judges', () => {
+        const checkpoint = `### Checks
+contains: Jupiter
+
+### Script
+echo ok
+
+### Judge
+Check correctness.
+
+### warn-Judge (haiku)
+Check style.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.checks).toHaveLength(2);
+        expect(result.judges).toHaveLength(2);
+        expect(result.judges[0]).toEqual({ prompt: 'Check correctness.', severity: 'fail', model: undefined });
+        expect(result.judges[1]).toEqual({ prompt: 'Check style.', severity: 'warning', model: 'claude-haiku-4-5-20251001' });
     });
 });
 
@@ -173,7 +266,6 @@ describe('judgeAllChecks — deterministic', () => {
         const schema = JSON.stringify({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] });
         const r = await judgeAllChecks('{"name": "test"}', `json-schema: ${schema}`);
         expect(r.overallVerdict).toBe('pass');
-        expect(r.verdicts[0].confidence).toBe(1.0);
     });
 
     it('json-schema: extracts JSON from markdown code block', async () => {
@@ -209,7 +301,6 @@ describe('judgeAllChecks — script', () => {
         const r = await judgeAllChecks('hello world', 'script: grep -q "hello"');
         expect(r.overallVerdict).toBe('pass');
         expect(r.verdicts[0].checkType).toBe('script');
-        expect(r.verdicts[0].confidence).toBe(1.0);
     });
 
     it('script: fail on exit non-zero', async () => {
@@ -281,5 +372,83 @@ describe('judgeAllChecks — multiple checks', () => {
         const r = await judgeAllChecks('some output', '');
         expect(r.overallVerdict).toBe('unclear');
         expect(r.verdicts).toHaveLength(0);
+    });
+});
+
+describe('judgeAllChecks — jq', () => {
+    const sampleEvents = [
+        { type: 'assistant', message: { content: [
+            { type: 'tool_use', name: 'Bash', input: { command: 'apify actors call apify/google-search-scraper -i {}' } },
+            { type: 'text', text: 'Running scraper...' },
+        ] } },
+        { type: 'assistant', message: { content: [
+            { type: 'tool_use', name: 'Read', input: { file_path: '/tmp/results.json' } },
+        ] } },
+    ];
+
+    it('jq: pass when expression returns truthy', async () => {
+        const r = await judgeAllChecks('output', 'jq: . | length > 0', { events: sampleEvents });
+        expect(r.overallVerdict).toBe('pass');
+        expect(r.verdicts[0].checkType).toBe('jq');
+    });
+
+    it('jq: fail when expression returns false', async () => {
+        const r = await judgeAllChecks('output', 'jq: . | length > 100', { events: sampleEvents });
+        expect(r.overallVerdict).toBe('fail');
+        expect(r.verdicts[0].checkType).toBe('jq');
+    });
+
+    it('jq: fail on invalid syntax', async () => {
+        const r = await judgeAllChecks('output', 'jq: [invalid syntax!!!', { events: sampleEvents });
+        expect(r.overallVerdict).toBe('fail');
+    });
+
+    it('jq: works with empty events', async () => {
+        const r = await judgeAllChecks('output', 'jq: . | length == 0', { events: [] });
+        expect(r.overallVerdict).toBe('pass');
+    });
+
+    it('warn-jq: produces warning not fail', async () => {
+        const r = await judgeAllChecks('output', 'warn-jq: . | length > 100', { events: sampleEvents });
+        expect(r.overallVerdict).toBe('warning');
+        expect(r.verdicts[0].verdict).toBe('warning');
+    });
+
+    it('jq: matches tool calls by name', async () => {
+        const r = await judgeAllChecks('output',
+            'jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length > 0',
+            { events: sampleEvents },
+        );
+        expect(r.overallVerdict).toBe('pass');
+    });
+
+    it('jq: matches command patterns with regex', async () => {
+        const r = await judgeAllChecks('output',
+            'jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command? // "" | select(test("apify (actors )?call"))] | length > 0',
+            { events: sampleEvents },
+        );
+        expect(r.overallVerdict).toBe('pass');
+    });
+
+    it('jq: detects forbidden tool not used', async () => {
+        const r = await judgeAllChecks('output',
+            'jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | .name | select(test("^Web(Search|Fetch)$"))] | length == 0',
+            { events: sampleEvents },
+        );
+        expect(r.overallVerdict).toBe('pass');
+    });
+
+    it('jq: detects forbidden tool used', async () => {
+        const eventsWithWeb = [
+            ...sampleEvents,
+            { type: 'assistant', message: { content: [
+                { type: 'tool_use', name: 'WebSearch', input: { query: 'test' } },
+            ] } },
+        ];
+        const r = await judgeAllChecks('output',
+            'jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | .name | select(test("^Web(Search|Fetch)$"))] | length == 0',
+            { events: eventsWithWeb },
+        );
+        expect(r.overallVerdict).toBe('fail');
     });
 });
