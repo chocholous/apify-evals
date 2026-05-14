@@ -286,7 +286,14 @@ for (let i = 0; i < tests.length; i++) {
         // Judge all checks
         const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
-        judgeResult = await judgeAllChecks(result.text, test.checkpoint, { env: secrets, workDir: currentWorkDir, judgeModel: input.judgeModel, events: result.events });
+        const judgeLines: string[] = [];
+        judgeResult = await judgeAllChecks(result.text, test.checkpoint, {
+            env: secrets, workDir: currentWorkDir, judgeModel: input.judgeModel, events: result.events,
+            onJudgeRawLine: (line) => {
+                judgeLines.push(line);
+                Actor.setValue('LIVE-JUDGE-LOG', judgeLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
+            },
+        });
         judgeMs = Date.now() - judgeStart;
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({

@@ -245,6 +245,7 @@ export interface JudgeOptions {
     workDir?: string;
     scriptTimeoutMs?: number;
     events?: Array<{ type: string; message?: { content: Array<{ type: string; text?: string; name?: string; input?: unknown }> } }>;
+    onJudgeRawLine?: (line: string) => void;
 }
 
 const DEFAULT_MAX_FILES = MAX_WORKSPACE_FILES;
@@ -357,6 +358,7 @@ export async function judgeAllChecks(
             checkpoint: parsed.judgePrompt,
             model: options?.judgeModel,
             env: options?.env,
+            onRawLine: options?.onJudgeRawLine,
         });
 
         if (llmResult) {
