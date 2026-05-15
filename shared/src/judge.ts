@@ -382,6 +382,23 @@ export interface JudgeResult {
     overallVerdict: VerdictValue;
 }
 
+function detectPlatformFailures(events?: JudgeOptions['events']): CheckVerdict | null {
+    if (!events) return null;
+    const memoryPattern = /exceed the memory limit|memory limit.*exceeded|cannot allocate memory/i;
+    for (const event of events) {
+        const result = (event as Record<string, unknown>).tool_use_result as Record<string, unknown> | undefined;
+        if (result?.stdout && memoryPattern.test(result.stdout as string)) {
+            return {
+                checkType: 'error',
+                checkValue: 'platform_failure:memory',
+                verdict: 'platform_failure',
+                evidence: (result.stdout as string).slice(0, 300),
+            };
+        }
+    }
+    return null;
+}
+
 export async function judgeAllChecks(
     agentOutput: string,
     checkpoint: string,
@@ -389,6 +406,11 @@ export async function judgeAllChecks(
 ): Promise<JudgeResult> {
     const parsed = parseCheckpointSection(checkpoint);
     const verdicts: CheckVerdict[] = [];
+
+    const platformFailure = detectPlatformFailures(options?.events);
+    if (platformFailure) {
+        verdicts.push(platformFailure);
+    }
 
     const scriptOptions: ScriptJudgeOptions = {
         workDir: options?.workDir,
@@ -400,6 +422,19 @@ export async function judgeAllChecks(
     for (const spec of parsed.checks) {
         const result = judgeDeterministicCheck(agentOutput, spec, scriptOptions);
         verdicts.push(result);
+    }
+
+    if (options?.workDir) {
+        try {
+            writeFileSync(join(options.workDir, 'eval-checkpoint.json'), JSON.stringify(
+                parsed.checks.map(c => ({ type: c.type, value: c.value.slice(0, 200), severity: c.severity })),
+                null, 2,
+            ));
+            writeFileSync(join(options.workDir, 'eval-check-results.json'), JSON.stringify(
+                verdicts.map(v => ({ checkType: v.checkType, verdict: v.verdict, evidence: v.evidence.slice(0, 300), checkValue: v.checkValue.slice(0, 200) })),
+                null, 2,
+            ));
+        } catch { /* ignore write errors */ }
     }
 
     for (const judge of parsed.judges) {
@@ -446,6 +481,7 @@ export async function judgeAllChecks(
 
 function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
     if (verdicts.length === 0) return 'unclear';
+    if (verdicts.some((v) => v.verdict === 'platform_failure')) return 'platform_failure';
     if (verdicts.some((v) => v.verdict === 'fail')) return 'fail';
     if (verdicts.some((v) => v.verdict === 'warning')) return 'warning';
     if (verdicts.some((v) => v.verdict === 'unclear')) return 'unclear';

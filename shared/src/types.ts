@@ -22,7 +22,7 @@ export interface ParsedScenario {
     parseWarnings?: string[];
 }
 
-export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear';
+export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear' | 'platform_failure';
 
 export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'error';
 
