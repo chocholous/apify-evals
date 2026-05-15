@@ -15,6 +15,7 @@ export interface ClaudeJudgeOptions {
 export interface JudgeLlmResult {
     verdict: string;
     reasoning: string;
+    eval_critique?: string;
 }
 
 const VERDICT_SCHEMA = JSON.stringify({
@@ -28,6 +29,10 @@ const VERDICT_SCHEMA = JSON.stringify({
         reasoning: {
             type: 'string',
             description: 'Your reasoning for the verdict. Reference specific evidence from the agent output.',
+        },
+        eval_critique: {
+            type: 'string',
+            description: 'Optional critique of the evaluation criteria themselves. Flag assertions that would pass even for bad output, important outcomes not tested, or assertions that cannot be verified from available data. Omit or leave empty if the eval criteria are solid.',
         },
     },
     required: ['verdict', 'reasoning'],

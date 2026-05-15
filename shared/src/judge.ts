@@ -428,6 +428,7 @@ export async function judgeAllChecks(
                 checkValue: judge.prompt,
                 verdict,
                 evidence: llmResult.reasoning,
+                evalCritique: llmResult.eval_critique || undefined,
             });
         } else {
             verdicts.push({

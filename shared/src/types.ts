@@ -31,6 +31,7 @@ export interface CheckVerdict {
     checkValue: string;
     verdict: VerdictValue;
     evidence: string;
+    evalCritique?: string;
 }
 
 // Base token/cost metrics (raw from agent)
