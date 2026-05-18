@@ -440,7 +440,15 @@ export async function judgeAllChecks(
     for (const judge of parsed.judges) {
         let enrichedOutput = agentOutput;
         if (options?.workDir) {
-            enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES);
+            enrichedOutput += `\n\n## Workspace (use Read/Bash to inspect)\n`;
+            enrichedOutput += `Working directory: ${options.workDir}\n`;
+            enrichedOutput += `Available files (read on demand, do NOT rely on memory):\n`;
+            enrichedOutput += `- eval-datasets/*.json — Apify actor run results (scraped data for grounding)\n`;
+            enrichedOutput += `- /tmp/*.json — data files the agent may have saved locally\n`;
+            enrichedOutput += `- eval-checkpoint.json — deterministic check definitions\n`;
+            enrichedOutput += `- eval-check-results.json — deterministic check pass/fail results\n`;
+            enrichedOutput += `- skills/ — skill definition, actor schemas, module references, verification checklist\n`;
+            enrichedOutput += `- .eval-trajectory.json — agent tool calls and commands\n`;
         }
         if (options?.events) {
             enrichedOutput += formatConversationLog(options.events);
