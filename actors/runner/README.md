@@ -62,7 +62,12 @@ Write one per line with a prefix:
 | `contains:` | Case-insensitive substring match | `contains: Jupiter` |
 | `regex:` | Regular expression test | `regex: \d{4}-\d{2}-\d{2}` |
 | `json-schema:` | Validates JSON output against schema | `json-schema: {"type":"object","required":["name"]}` |
-| `script:` | Bash script (agent output on stdin, exit 0 = pass) | `script: jq -e '.status == "ok"'` |
+| `script:` | Bash script — agent **output** on stdin, exit 0 = pass | `script: jq -e '.status == "ok"'` |
+| `jq:` | `jq -e` expression over the conversation **event stream** (tool calls, not output text) | `jq: [.[] \| select(.type=="assistant") \| .message.content[]? \| select(.name=="Bash")] \| length > 0` |
+
+**`script:` vs `jq:`** — `script:` evaluates the agent's final text output. `jq:` evaluates the trajectory (every tool call, every event). Use `jq:` when you need to assert *what the agent did*, not just *what it said*.
+
+**Warning severity (`warn-` prefix):** every check type accepts a `warn-` prefix (`warn-contains:`, `warn-regex:`, `warn-jq:`, `warn-script:`, `warn-json-schema:`). A failed warn-check produces a `warning` verdict that does **not** fail the overall checkpoint — useful for nice-to-have asserts you don't want to gate the test on yet.
 
 ### LLM Judge (smart, costs ~$0.001–$0.05)
 
@@ -72,6 +77,8 @@ Any text without a prefix becomes a prompt for the LLM judge. It evaluates wheth
 The answer must correctly identify the capital city and provide
 at least one historical fact about it.
 ```
+
+The judge is a full Claude agent with **Read/Bash/Glob tool access** to the workspace — not just a text classifier. It automatically receives the agent's output, the conversation log (every tool call), and a listing of all files the agent created. You can write prompts like *"verify by reading `output.json`"* or *"run `apify run` and check the dataset"* and the judge will actually do it. Soft 5-minute budget per judge call, no turn limit.
 
 ### Combining checks
 
@@ -131,30 +138,29 @@ Does the response include helpful comments or documentation?
 
 Each judge returns `{verdict, reasoning}` — verdict is `pass`, `fail`, or `unclear`.
 
-## Expected tools (discoverability scoring)
+## Tool usage assertions (use `jq:`)
 
-Scenarios can declare which tools the agent should (or shouldn't) use. This doesn't affect the agent — it's used after the run to compute a `discoverabilityScore` in the output:
+To check whether an agent used the right tools, or NOT used the wrong ones, write `jq:` checkpoints over the conversation event stream. The agent's tool calls are in `assistant` events as `tool_use` content blocks:
 
-```yaml
----
-name: tool-discovery-eval
-description: Test agent's ability to find and use MCP tools
-expectedTools:
-  required: [mcp__apify__call-actor, Bash]
-  forbidden: [mcp__github__search]
-  optional: [Read, Write]
----
+```markdown
+## Checkpoint
+
+### Checks
+# Agent MUST use Bash
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash")] | length > 0
+
+# Agent MUST NOT use WebSearch / WebFetch
+jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | .name | select(test("^Web(Search|Fetch)$"))] | length == 0
+
+# Ideally calls apify CLI with `actors call` (warning, not fail)
+warn-jq: [.[] | select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command? // "" | select(test("apify (actors )?call"))] | length > 0
 ```
 
-| Field | Meaning |
-|-------|---------|
-| `required` | Agent must use these tools. Missing = lower score |
-| `forbidden` | Agent must NOT use these. Used = score 0 |
-| `optional` | Allowed but not required. Not penalized either way |
+Same mechanism covers **parameter correctness** — drill into `.input.command`, `.input.file_path`, etc. and `test("regex")` against the value.
 
-Output includes `discoverability.discoverabilityScore` (0–1) and `discoverability.missingTools` / `forbiddenToolsUsed` arrays.
+The `jq:` approach replaced an earlier design with `expectedTools` frontmatter (`required`/`forbidden`/`optional` lists) and a baked-in `discoverabilityScore` output field. The new approach is more expressive (any jq query, severity per check, integrated into the same verdict aggregation) and required no special types or output fields.
 
-For task-specific instructions (language, framework, constraints), put them directly in the `## Test` prompt or in the `systemPrompt` input.
+> **Deprecation note:** older scenarios sometimes contain an `## Expected Tools` section or `expectedTools:` YAML frontmatter. Both are silently ignored by the runner today — the parser accepts them for backwards compatibility, but they don't affect verdicts or output. Convert them to `jq:` checks.
 
 ## Init presets
 
@@ -192,6 +198,19 @@ When using "MCP Native" or "mcpc" preset, provide the server configuration:
 
 Token values like `${APIFY_TOKEN}` are resolved from your Environment Variables input.
 
+### Claude Code plugin auto-detection
+
+If your init script places a `.claude-plugin/plugin.json` file at the workspace root, the runner automatically passes `--plugin-dir <workspace>` to Claude Code. The plugin's skills, hooks, and slash commands are then loaded for the agent — no extra input field needed. Typical setup:
+
+```bash
+git clone --depth 1 https://github.com/user/my-plugin.git _plugin
+cp -r _plugin/.claude-plugin .claude-plugin
+cp -r _plugin/skills skills
+rm -rf _plugin
+```
+
+Note: Claude Code OAuth requires `CLAUDE_CODE=0` in `envVariables` and `ANTHROPIC_API_KEY` must not be set (even empty — it overrides OAuth).
+
 ## Output
 
 Each test produces one dataset item with full results, metrics, and trajectory:
@@ -205,10 +224,11 @@ Each test produces one dataset item with full results, metrics, and trajectory:
     "testPrompt": "Find the GitHub issue...",
     "checkpoint": "contains: @alice\n...",
     "agentOutput": "I found issue #42 reported by @alice...",
+    "agentOutputLength": 387,
     "monitorOutput": null,
     "verdicts": [
-        { "checkType": "contains", "checkValue": "@alice", "verdict": "pass", "evidence": "Output contains \"@alice\"", "confidence": 1.0 },
-        { "checkType": "llm-judge", "checkValue": "The answer should...", "verdict": "pass", "evidence": "Agent correctly identified the issue reporter @alice based on the GitHub API response.", "confidence": 1.0 }
+        { "checkType": "contains", "checkValue": "@alice", "verdict": "pass", "evidence": "Output contains \"@alice\"" },
+        { "checkType": "llm-judge", "checkValue": "The answer should...", "verdict": "pass", "evidence": "Agent correctly identified the issue reporter @alice.", "evalCritique": "The check would also pass if the agent guessed a random @-handle — consider asserting the issue number too." }
     ],
     "overallVerdict": "pass",
     "metrics": {
@@ -229,36 +249,58 @@ Each test produces one dataset item with full results, metrics, and trajectory:
         "cacheHitRate": 0.95,
         "contextOutputRatio": 53.0,
         "apiDurationRatio": 1.07,
-        "avgTurnDurationMs": 4133
+        "avgTurnDurationMs": 4133,
+        "toolExecutionMs": 4200,
+        "planningTurns": 1,
+        "executionTurns": 2
     },
     "trajectory": {
         "toolCallCount": 5,
         "toolCallSequence": ["Bash", "Read", "Bash", "Read", "Bash"],
         "uniqueToolsUsed": ["Bash", "Read"],
         "toolCallsPerTurn": 1.67,
-        "perTurnTokens": [{"turn": 1, "input": 1200, "output": 300}, ...],
-        "perTurnToolCalls": [{"turn": 1, "tools": ["Bash", "Read"]}, ...],
+        "perTurnTokens": [{"turn": 1, "input": 1200, "output": 300}],
+        "perTurnToolCalls": [{"turn": 1, "tools": ["Bash", "Read"]}],
+        "toolCallDetails": [{"tool": "Bash", "turn": 1, "input": {"command": "gh issue list --repo acme/app"}}],
         "errorRecoveryCount": 0,
         "filesCreated": [],
         "filesModified": [],
         "commandsExecuted": ["gh issue list --repo acme/app", "gh issue view 42"],
         "mcpToolsUsed": []
     },
+    "judge": {
+        "judgeCostUsd": 0,
+        "judgeLatencyMs": 3200,
+        "judgeTurns": 1
+    },
+    "retryAttempts": 0,
     "stopReason": "end_turn",
     "exitCode": 0,
     "aborted": false,
     "abortReason": null,
-    "error": null
+    "error": null,
+    "hungWarnings": []
 }
 ```
 
+Notes on selected fields:
+- `verdicts[].evalCritique` — present only on `llm-judge` checks where the judge flagged a weakness in the eval criteria itself (see `### Judge` / `### eval-Judge` in CLAUDE.md).
+- `verdicts[].evalGapSeverity` — present only on `eval-review` verdicts (from `### eval-Judge`); value is `critical | noncritical | ok`.
+- `judge.judgeCostUsd` is always `0` — the CLI judge runs as a `claude -p` subprocess that does not report token cost back. Use `judgeLatencyMs` and `judgeTurns` for judge cost estimation.
+- `retryAttempts` is typically `0` (the default); see runner Tips on why retries are marked experimental.
+- `hungWarnings` reports periods where the agent was silent for too long (`elapsedMs`, `silenceSecs`) — useful for diagnosing stuck runs.
+
 Full conversation logs are stored in the Key-Value Store:
 
-| Key | Content | Format |
-|-----|---------|--------|
-| `CONVERSATION-LOG` | Agent's raw event stream (secrets masked) | NDJSON |
-| `JUDGE-LOG` | Checkpoint evaluation details | NDJSON |
-| `OTEL-TRACE` | OpenTelemetry trace with GenAI semantic conventions | OTLP JSON |
+| Key | Content | Format | When |
+|-----|---------|--------|------|
+| `LIVE-AGENT-LOG` | Agent's raw event stream, streamed **token-by-token** as Claude generates output (`text_delta` / `thinking_delta`) | NDJSON | During run |
+| `LIVE-JUDGE-LOG` | Judge's raw event stream, also token-by-token during each LLM judge call | NDJSON | During run |
+| `CONVERSATION-LOG` | Final agent event stream (secrets masked) | NDJSON | After run |
+| `JUDGE-LOG` | Final checkpoint evaluation details | NDJSON | After run |
+| `OTEL-TRACE` | OpenTelemetry trace with GenAI semantic conventions | OTLP JSON | After run |
+
+The two `LIVE-*` keys are written continuously as the agent (or judge) produces output. **Open them in Apify Console while a run is still going** — this is the fastest way to debug a new scenario, see what tools the agent is calling, and catch issues before the run finishes.
 
 The OTel trace uses standard `gen_ai.*` attributes (tokens, tool calls, evaluations) and can be loaded into [AgentPrism](https://github.com/evilmartians/agent-prism), Jaeger, Langfuse, or any OTLP-compatible viewer.
 
@@ -278,6 +320,7 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 - Set `abortOnFailure: true` when tests build on each other (test 2 depends on test 1)
 - Use `script:` checkpoints to verify side effects (files created, API state changed)
 - The Custom Init Script can install tools, download validators, or set up test fixtures
+- If the agent runs an Apify Actor, its dataset is automatically downloaded into `eval-datasets/<datasetId>.json` in the workspace — your script checks and the LLM judge can read it directly
 
 ## Scenario cookbook
 

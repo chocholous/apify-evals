@@ -4,6 +4,13 @@ export interface ScenarioMeta {
     abortOnFailure: boolean;
 }
 
+/**
+ * @deprecated Parsed but not consumed by the runner. Tool discoverability
+ * and parameter correctness are now expressed as `jq:` checkpoints over the
+ * event stream (see docs/07-additional-features.md). Remove during the next
+ * dead-code sweep along with the `## Expected Tools` parsing block in
+ * scenario-parser.ts and any scenarios that still declare it.
+ */
 export interface ExpectedToolCall {
     tool: string;
     parameterHint: string;
@@ -13,6 +20,7 @@ export interface TestCase {
     test: string;
     checkpoint: string;
     monitor: string | null;
+    /** @deprecated See note on `ExpectedToolCall`. Always populated by the parser, never read. */
     expectedToolCalls: ExpectedToolCall[];
 }
 

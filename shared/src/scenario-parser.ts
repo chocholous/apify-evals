@@ -56,6 +56,10 @@ export function parseScenario(markdown: string): ParsedScenario {
                 continue;
             }
 
+            // DEPRECATED: `## Expected Tools` is still parsed for backwards compatibility
+            // but the result is never consumed by the runner. Tool discoverability and
+            // parameter assertions are now expressed as `jq:` checkpoints. See
+            // docs/07-additional-features.md. Drop this block on next dead-code sweep.
             const expectedToolCalls: ExpectedToolCall[] = [];
             if (expectedToolsMatch) {
                 const lines = expectedToolsMatch[1].trim().split('\n');

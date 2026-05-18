@@ -36,7 +36,7 @@ Orchestrator přijme scénář + agenty + opakování N, vrátí matici agent ×
 Orchestrator přijme baseline dataset ID, porovná, flaguje zhoršení o >X%.
 
 ### US5: Multi-step testy
-Markdown s `---` separátory, `## Test` / `## Checkpoint` / `## Monitor`. `abortOnFailure: true` zastaví po prvním failu.
+Markdown s `---` separátory, `## Test` / `## Checkpoint` / `## Monitor`. `abortOnFailure: true` zastaví po prvním failu. Checkpoint může být flat (prefixované řádky `contains:` / `regex:` / …) nebo subsection (`### Checks` / `### Script` / `### Judge`) — detail v `docs/07-additional-features.md`.
 
 ### US6: Bezpečné env vars
 Secure input, dostupné v init scriptu, po použití smazané, v logu maskovány.
@@ -45,16 +45,16 @@ Secure input, dostupné v init scriptu, po použití smazané, v logu maskovány
 Budget control přes `--max-budget-usd` (nativní) + mezi-turnový SIGTERM jako fallback. Výsledek s `aborted: true`.
 
 ### US8: Tool Discoverability Scoring
-Scénář deklaruje expected tools (`expectedTools` ve frontmatter). Runner porovná s trajectory a vrátí discoverability metriky — které tools agent našel/nenašel, extra/forbidden tools, skóre. Měří schopnost agenta objevit správné nástroje.
+**Cíl:** měřit schopnost agenta objevit správné nástroje (must use / must not use). **Reálná implementace** (jiná než původní návrh): místo dedikovaného `expectedTools` frontmatter pole a `discoverabilityScore` outputu autor scénáře píše `jq:` checkpointy nad event streamem — `jq: [.[] | select(.name=="X")] | length > 0` (musí použít) a `jq: ... length == 0` (nesmí), nebo `warn-jq:` pro doporučené. Agregace přes existující checkpoint systém — žádný extra subsystém. Viz `docs/07-additional-features.md` a runner README "Tool usage assertions". `## Expected Tools` sekce a `expectedTools` YAML frontmatter zůstávají deprecated (parsované, ale ignorované).
 
 ### US9: Tool Parameter Correctness
-Scénář deklaruje expected tool parametry (`## Expected Tools` sekce). Runner zachytí tool call inputs a vyhodnotí shodu — měří kvalitu dokumentace tools (agent je našel, ale volal správně?).
+**Cíl:** ověřit, že agent volá tool se správnými parametry. **Reálná implementace:** stejný `jq:` mechanismus jako US8, ale s drill-down na `.input.command` / `.input.file_path` apod. + `select(test("regex"))` na hodnoty parametrů. Žádný `tool-params:` checkpoint typ.
 
 ### US10: Actor Spec Validation
-Agent vytvoří Apify Actor dle specifikace. Checkpoint ověří: soubory existují, input schema odpovídá, Actor se buildí a produkuje output, output matchuje expected strukturu. Měří end-to-end kvalitu vygenerovaného kódu.
+Agent vytvoří Apify Actor dle specifikace. Checkpoint ověří: soubory existují, input schema odpovídá, Actor se buildí a produkuje output, output matchuje expected strukturu. Měří end-to-end kvalitu vygenerovaného kódu. **Reálná implementace:** kombinace `script:` checkpointů (filesystem assertions nad workspace + `apify run` smoke test) a `### Judge` s plným tool accessem (judge si sám může otevřít vygenerované soubory přes Read/Bash).
 
 ### US11: Custom Agent Configuration per Scenario
-Scénář specifikuje `language`, `template`, `actorSpec` ve frontmatter. Runner inject do system promptu a init scriptu. Agent pracuje v kontextu předkonfigurovaného prostředí.
+**Cíl:** scénář pracuje v předkonfigurovaném prostředí. **Reálná implementace** (jiná než původní návrh): místo frontmatter polí `language`/`template`/`actorSpec` se konfigurace dělá přes **runner input fields** — `systemPrompt` (instrukce pro agenta), `initBashScript` (scaffolding přes `apify create --template`, klonování plugin repos, atd.), `mcpConfigJson` + `initPreset` (tool setup). Konfigurace tak žije na úrovni runneru a je parametrizovatelná napříč spuštěními téhož scénáře — ne hardcoded ve scénáři.
 
 ---
 
@@ -67,7 +67,7 @@ Scénář specifikuje `language`, `template`, `actorSpec` ve frontmatter. Runner
 | Repo struktura | Monorepo s npm workspaces |
 | Závislosti | `apify`, `gray-matter` (vše ostatní built-in Node.js) |
 | Agent execution | `child_process.spawn()` + `readline` (NDJSON streaming) |
-| Judge | Dual: deterministic (contains/regex/json-schema) + LLM (`claude -p --json-schema`) |
+| Judge | Dual: deterministic (contains/regex/json-schema/script/jq) + LLM (`claude -p --json-schema`). `jq:` rozšiřuje scope na trajectory (tool calls), ostatní pracují nad agent output stringem — viz `docs/07-additional-features.md`. |
 | Init scripts | Předdefinované presets (dropdown) + custom textarea |
 | Storage | KV store (JSONL conversation log) + Dataset (structured results) |
 | Metriky | Structured JSON logs. Eval framework (promptfoo) ve Fázi 4. |
@@ -82,7 +82,7 @@ Scénář specifikuje `language`, `template`, `actorSpec` ve frontmatter. Runner
 
 ### Custom metriky (postupně)
 
-1. Předdefinované typy (contains, regex, json-schema, llm-judge) — Fáze 1
+1. Předdefinované typy (contains, regex, json-schema, script, jq, llm-judge) — Fáze 1-2
 2. Custom v YAML frontmatter scénáře — Fáze 2
 3. Custom JS/TS scorer funkce — Fáze 4
 
@@ -114,23 +114,22 @@ Všechny spiky proběhly úspěšně. Kód v `spikes/`.
 4. ~~**F1.3: Runner Actor**~~ ✅ — input/output/dataset schema, Dockerfile (fat image), main loop, streaming, env vars, KV + dataset, graceful abort
 5. ~~**F1.4: Init script presets**~~ ✅ — mcp_native, cli_native, mcpc + custom textarea
 
-### ~~Fáze 2: Multi-agent + Tool Discovery~~ ✅ HOTOVO
+### ~~Fáze 2: Multi-agent + Tool Discovery~~ ✅ HOTOVO (US8/US9 jinak než původně)
 **US1 rozšíření, US8, US9**
 
 - ~~Codex CLI adapter, OpenCode adapter~~ ✅ — registry + per-agent parsery (pipeline ověřen, credentials TBD)
 - ~~Token metriky opraveny~~ ✅ — cacheHitRate (0-1), perTurnTokens deduplikace, totalContextTokens
-- ~~expectedTools + discoverability scoring~~ ✅
-- ~~toolCallDetails~~ ✅ — tool call inputs (truncated) v trajectory
-- ~~## Expected Tools sekce~~ ✅
+- ~~expectedTools + discoverability scoring~~ → **nahrazeno `jq:` checkpointy** (viz US8/US9 výše a `docs/07-additional-features.md`). `## Expected Tools` sekce + `expectedTools` frontmatter zůstávají parsované, ale ignorované (deprecated, čeká na dead-code sweep).
+- ~~toolCallDetails~~ ✅ — tool call inputs v trajectory (raw, ne truncated)
 - ~~Graceful abort~~ ✅
 
-### ~~Fáze 2.5: Actor Development Evals~~ ✅ HOTOVO
+### ~~Fáze 2.5: Actor Development Evals~~ ✅ HOTOVO (US11 jinak než původně)
 **US10, US11**
 
-- ~~`actorSpec`, `language`, `template` v scenario frontmatter~~ ✅ — parser + system prompt injection
-- Init script: scaffold Actor z template — řešitelné přes `initBashScript`
+- `actorSpec`, `language`, `template` ve frontmatter → **nahrazeno runner input fields** (`systemPrompt`, `initBashScript`, `mcpConfigJson`/`initPreset`). Konfigurace agenta žije na úrovni runneru, ne scénáře — parametrizovatelné napříč runs téhož scénáře.
+- Init script: scaffold Actor z template — řešitelné přes `initBashScript` ✅
 - ~~Script checkpointy pro Actor validation~~ ✅ — `apify run` + output check v script checkpoint
-- ~~LLM judge pro fuzzy schema comparison~~ ✅ — přes `### Judge` subsekci
+- ~~LLM judge pro fuzzy schema comparison~~ ✅ — přes `### Judge` subsekci (judge má full tool access, viz `docs/07-additional-features.md`)
 - ~~Vzorový scénář: CheerioCrawler scraper~~ ✅ — `scenarios/actor-dev/cheerio-scraper.md`
 
 ### Fáze 3: Orchestrator Actor
@@ -144,7 +143,7 @@ Všechny spiky proběhly úspěšně. Kód v `spikes/`.
 ### Fáze 4: Advanced eval
 - Promptfoo (nebo alternativa) integrace — vyžaduje hlubší research
 - Custom metriky v YAML + JS/TS scorer funkce
-- OTel export (optional, pro vizualizaci v Langfuse/Phoenix)
+- ~~OTel export~~ ✅ HOTOVO (viz D17) — OTLP JSON do `OTEL-TRACE` KV klíče, GenAI semantic conventions, kompatibilní s AgentPrism/Langfuse/Jaeger
 - Per-tool-call latency tracking
 
 ### Fáze 5: Scénáře, dokumentace, CI/CD

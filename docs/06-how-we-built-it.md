@@ -26,3 +26,7 @@ The codebase is ~2400 LOC of production TypeScript and ~2500 LOC of tests across
 18. **Key design decision: deterministic checks first, LLM judge as fallback.** `contains:`, `regex:`, `json-schema:`, `script:` run with confidence 1.0 and zero cost. LLM judge only for subjective criteria. All checks must pass for overall pass.
 19. **What we'd do differently: export parsers from day one.** Internal functions couldn't be tested directly, so early tests reimplemented parsing logic — a maintenance trap we caught only during the final audit.
 20. **What we'd do differently: script checkpoints need sandboxing.** Currently they run as bash with full filesystem access. In a multi-tenant setup, this needs a proper sandbox (Docker-in-Docker or gVisor).
+
+---
+
+Features that grew beyond the original plan (judge enhancements, telemetry, workspace conventions, output extensions) are catalogued in [`07-additional-features.md`](07-additional-features.md).

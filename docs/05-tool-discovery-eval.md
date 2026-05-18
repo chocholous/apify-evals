@@ -1,5 +1,14 @@
 # Tool Discovery & Actor Development Evals — Design Doc
 
+> ⚠️ **SUPERSEDED.** Tento dokument byl design proposal pro US8/US9/US11. Realizace nakonec šla jinou (jednodušší) cestou:
+>
+> - **US8 Discoverability + US9 Parameter Correctness** → vyjádřené jako `jq:` checkpointy nad event streamem, ne jako dedikovaný subsystém s `expectedTools` frontmatter a `discoverabilityScore` outputem.
+> - **US11 Custom Agent Config** → vyjádřené přes **runner input fields** (`systemPrompt`, `initBashScript`, `mcpConfigJson`), ne přes per-scenario frontmatter (`language`/`template`/`actorSpec`).
+>
+> Aktuální stav viz `docs/07-additional-features.md` (sekce "Judge enhancements" → jq checkpoint) a `actors/runner/README.md` ("Tool usage assertions"). Cíle US8/US9/US11 v `docs/01-plan.md` jsou aktualizované.
+>
+> Tento dokument je zachován jako historická stopa — design, který jsme nakonec nepostavili, protože existující primitivy (`jq:`, severity prefix, input fields) ten use case pokryly bez nové komplexity. Pozor: konkrétní syntaxe a outputy popsané dále (zejména `expectedTools` YAML pole, `## Expected Tools` sekce, `discoverability.discoverabilityScore` field, `tool-params:` check) v kódu **nejsou implementované** nebo jsou implementované jako no-op (parsované, ale ignorované).
+
 ## Motivace
 
 Stávající US1-US7 hodnotí agenta na úrovni "splnil task? pass/fail". Nový use case (evaluace Apify Actor development) potřebuje hlubší metriky:

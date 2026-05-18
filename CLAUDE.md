@@ -101,24 +101,29 @@ Optional: is error handling present?
 ```
 Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge`/`warn-Judge` (case-insensitive). Více `### Judge` bloků v jednom checkpointu je povoleno — každý = samostatný LLM call.
 
-**Judge modifikátory:**
-- `### Judge` — default model (sonnet), fail severity
-- `### Judge (opus)` — explicitní model (aliases: `haiku`, `sonnet`, `opus` nebo plné model ID)
-- `### warn-Judge` — warning severity (fail verdikt = warning, ne fail)
-- `### warn-Judge (haiku)` — kombinace
+**Judge severity (3 úrovně):**
+- `### Judge` — default model (sonnet), **fail** severity, schema `{verdict: pass|fail|unclear, reasoning, eval_critique?}`
+- `### warn-Judge` — **warn** severity (fail verdikt = warning, neblokuje overall)
+- `### eval-Judge` — **eval** severity, jiné schéma (`{eval_gap_severity: critical|noncritical|ok, reasoning}`). Vrací `checkType: 'eval-review'`, **je vyloučen z `computeOverall`** (`judge.ts:480`) — hodnotí kvalitu eval frameworku, ne agenta. Pro autora scénáře = "judge řekne, jestli mé checky vůbec měří správnou věc".
+
+**Model override:** `### Judge (opus)`, `### warn-Judge (haiku)`, `### eval-Judge (opus)` — alias z `JUDGE_MODEL_MAP` nebo plné model ID.
+
+**`warn-` prefix funguje i na všech deterministic check typech** (`judge.ts:113-115`), ne jen na Judge: `warn-contains:`, `warn-regex:`, `warn-json-schema:`, `warn-script:`, `warn-jq:`. Fail verdikt se mapuje na 4. verdict `warning` (`types.ts:25`), který v agregaci neblokuje overall pass.
 
 **Judge JSON schema:** `{verdict: "pass"|"fail"|"unclear", reasoning: "string"}`
 
-### Typy kontrol
+### Typy kontrol (`CheckType` v `types.ts:29`)
 
-| Typ | Confidence | Jak funguje |
-|-----|-----------|-------------|
-| `contains:` | 1.0 | Case-insensitive substring match |
-| `regex:` | 1.0 | Case-insensitive regex test |
-| `json-schema:` | 1.0 | Ajv validace proti JSON Schema |
-| `script:` | 1.0 | Bash script, agent output na stdin, exit 0 = pass, stdout = evidence |
-| `jq:` | 1.0 | jq výraz nad conversation events (JSON array), `-e` flag, exit 0 = pass |
-| LLM judge | 1.0 | `claude-sonnet-4-6` (default) s `--json-schema`, max 2 retry, per-block model override |
+| `checkType` | Z jakého syntaxu vznikne | Co dělá |
+|-------------|--------------------------|---------|
+| `contains` | `contains:` / `warn-contains:` | Case-insensitive substring match nad agent output stringem |
+| `regex` | `regex:` / `warn-regex:` | Case-insensitive regex test nad agent output stringem |
+| `json-schema` | `json-schema:` / `warn-json-schema:` | Ajv validace JSON output (extrahovaný z code blocku) proti schématu |
+| `script` | `script:` / `warn-script:` nebo `### Script` | Bash script, agent output na **stdin**, exit 0 = pass, stdout = evidence |
+| `jq` | `jq:` / `warn-jq:` | `jq -e` výraz nad conversation events (JSON array) na stdin, exit 0 = pass |
+| `llm-judge` | `### Judge` / `### warn-Judge` (+ plain text dole pod prefix řádky) | Full Claude judge agent s tool accessem, schema `{verdict, reasoning, eval_critique?}` |
+| `eval-review` | `### eval-Judge` | Full Claude agent, jiné schema `{eval_gap_severity, reasoning}`, **vyloučen z `computeOverall`** |
+| `error` | runner sám (ne autor scénáře) | `platform_failure` verdict z `detectPlatformFailures` (Apify memory limit kill) |
 
 ### Script checkpoint
 - Agent output přijde na **stdin**
@@ -126,6 +131,12 @@ Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge`/`warn-Judge` (case-insen
 - stdout = evidence (max 1000 znaků)
 - Timeout: 30s (konfigurovatelný přes `scriptTimeoutMs`)
 - Má přístup k env vars a working directory (vidí soubory co agent vytvořil)
+
+### Workspace konvence
+- Working directory pro agenta i script checkpointy: `/tmp/eval-workspace-<uuid8>/` (`main.ts:61`)
+- Každý retry dostane fresh workspace (nový uuid)
+- Workspace obsahuje: soubory vytvořené agentem, `eval-datasets/<id>.json` (Apify datasety, viz LLM Judge sekce), `.eval-trajectory.json` (raw trajectory data), `eval-checkpoint.json` + `eval-check-results.json` (jen v judge fázi)
+- Scénáře typu `security-isolation.md` testují, že agent nemůže psát mimo workspace (runner files vlastní root)
 
 ### jq checkpoint
 - Conversation events (JSON array) přijdou na **stdin** do `jq -e`
@@ -161,19 +172,34 @@ interface AgentResult {
     testPrompt: string;
     checkpoint: string;         // raw checkpoint markdown
     agentOutput: string;        // raw agent text response
+    agentOutputLength: number;  // outputText.length (rychlý filtr v Apify Console)
     monitorOutput: string | null;
     verdicts: CheckVerdict[];   // per-check results
-    overallVerdict: VerdictValue; // 'pass' only if ALL pass
+    overallVerdict: VerdictValue; // 'pass' only if ALL agent-verdicts pass; eval-review je vyloučen
     metrics: RunMetrics;        // tokens, cost, duration
     efficiency: EfficiencyMetrics; // derived ratios
     trajectory: TrajectoryMetrics; // tool calls, files, commands
+    judge: JudgeMetrics;        // per-run judge cost/latency/turns
+    retryAttempts: number;      // typicky 0 (retry je experimental, viz README)
     stopReason: string;         // 'end_turn' | 'budget_exceeded' | 'error' | ...
     exitCode: number | null;
     aborted: boolean;
     abortReason: string | null;
     error: string | null;
+    hungWarnings: HungWarning[]; // periody, kdy byl agent dlouho zticha
+}
+
+interface CheckVerdict {
+    checkType: CheckType;       // 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error'
+    checkValue: string;
+    verdict: VerdictValue;      // 'pass' | 'fail' | 'warning' | 'unclear' | 'platform_failure'
+    evidence: string;
+    evalCritique?: string;      // jen na llm-judge: judge kritizuje slabost eval kritéria
+    evalGapSeverity?: EvalGapSeverity;  // jen na eval-review (### eval-Judge): 'critical' | 'noncritical' | 'ok'
 }
 ```
+
+> Pozn.: `confidence` field byl odstraněn (commit `60b6271` "Multi-judge blocks, jq checks, remove discoverability residuals" a okolí). Pokud někde v docs ještě je, je to zastaralé.
 
 ### RunMetrics
 ```typescript
@@ -183,20 +209,41 @@ interface AgentResult {
 
 ### EfficiencyMetrics (Tier 1 — derivované)
 ```typescript
-{ totalContextTokens, tokensPerTurn, costPerTurn, cacheHitRate, contextOutputRatio, apiDurationRatio, avgTurnDurationMs }
+{ totalContextTokens, tokensPerTurn, costPerTurn, cacheHitRate, contextOutputRatio, apiDurationRatio, avgTurnDurationMs,
+  toolExecutionMs, planningTurns, executionTurns }
 ```
 - `totalContextTokens` = inputTokens + cacheReadTokens + cacheCreationTokens (reálný kontext poslaný modelu)
 - `cacheHitRate` = cacheRead / totalContext (0-1, ne per-turn sum)
 - `contextOutputRatio` = totalContext / output (kolik agent čte vs generuje)
 - `apiDurationRatio` > 1 je normální (Claude CLI sčítá paralelní API calls)
+- `toolExecutionMs` = durationMs − durationApiMs (čas strávený v tools, ne v LLM)
+- `planningTurns` = počet turnů jen s textovým výstupem (žádný tool call)
+- `executionTurns` = počet turnů s ≥1 tool callem
 
 ### TrajectoryMetrics (Tier 1+2 — z event streamu)
 ```typescript
 { toolCallCount, toolCallSequence, uniqueToolsUsed, toolCallsPerTurn,
   perTurnTokens, perTurnToolCalls,
+  toolCallDetails,        // Array<{tool, turn, input}>, truncated parametry — pro parameter correctness analýzy
   errorRecoveryCount,
   filesCreated, filesModified, commandsExecuted, mcpToolsUsed }
 ```
+
+### JudgeMetrics
+```typescript
+{ judgeCostUsd, judgeLatencyMs, judgeTurns }
+```
+- `judgeCostUsd` je **vždy 0** (`main.ts:301` hardcoded) — CLI judge je `claude -p` subprocess a nereportuje token cost zpět. Pro odhad ceny použij `judgeLatencyMs` × tarif modelu z `judge.judgeTurns` calls.
+- `judgeLatencyMs` = wall-clock čas strávený ve všech LLM judge callech pro daný run
+- `judgeTurns` = počet `llm-judge` verdicts v `verdicts[]` (= počet `### Judge`/`### warn-Judge`/`### eval-Judge` bloků v checkpointu)
+
+### HungWarning
+```typescript
+{ elapsedMs, silenceSecs }
+```
+- `elapsedMs` — kolik ms uplynulo od startu agenta, když se detekovalo dlouhé ticho
+- `silenceSecs` — jak dlouho byl agent zticha
+- Slouží k diagnostice zaseknutých runů (commit `c3c263e`)
 
 ## Init presets (`shared/src/init-presets.ts`)
 
@@ -226,21 +273,73 @@ Nic dalšího v inputu není potřeba — `pluginDirs` se nespecifikuje, detekce
 
 Jediný backend: CLI judge (`shared/src/agents/claude.ts`).
 
-### CLI judge
-- `claude -p --output-format stream-json --verbose --include-partial-messages --json-schema` subprocess
+### CLI judge — full Claude agent s tool accessem
+- `claude -p --output-format stream-json --verbose --include-partial-messages --json-schema --dangerously-skip-permissions --no-session-persistence` subprocess
 - Default model: `claude-sonnet-4-6` (konstanta `JUDGE_MODEL` v `constants.ts`)
 - Per-judge model override přes `### Judge (model)` syntax (`haiku`/`sonnet`/`opus` alias nebo plné model ID)
+- **Judge má plný Claude toolset** — Read, Bash, Glob, atd. Není to text classifier; je to standardní Claude agent, který může sám browsovat workspace a verifikovat artefakty (commit `d0740f4` to drží jako klíčový důvod, proč máme CLI judge a ne SDK judge).
+- Timeout: 5 min soft budget (`JUDGE_TIMEOUT_MS`), žádný max-turns limit (commit `e34297f`).
+- Plná data v promptu, žádné truncation (commit `fa1a4e4`).
 - NDJSON readline-based parsing (stejný pattern jako agent)
-- `structured_output` extrahován z `result` eventu: `{verdict: "pass"|"fail"|"unclear", reasoning: "string"}`
-- `stream_event` eventy dostupné přes `onRawLine` callback pro real-time monitoring
+- `stream_event` eventy dostupné přes `onRawLine` callback pro real-time monitoring (+ teče do `LIVE-JUDGE-LOG` KV)
 - Žádný API klíč potřeba (OAuth/subscription stačí)
 
-### Více judge bloků
-- Checkpoint může mít N `### Judge` bloků — každý = samostatný LLM call → samostatný verdict
-- `### warn-Judge` = warning severity (fail verdikt se mapuje na warning, ne fail)
-- Agregace: jakýkoliv judge s fail severity a verdict=fail → celý checkpoint fail
+### Co judge dostane v promptu
 
-Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` s confidence 0.
+`judgeAllChecks` postaví `enrichedOutput` ze tří částí (`judge.ts:418-432`) a předá ho do prompt template (`claude.ts:63-72`):
+
+```
+You are an evaluation judge. You have a soft budget of 5 minutes for this evaluation.
+Determine whether the agent's output satisfies the checkpoint criteria.
+
+## Agent Output
+{raw agent text — full, no truncation}
+
+## Workspace (use Read/Bash to inspect)         ← jen pokud workDir má soubory
+Working directory: /tmp/eval-workspace-xxx
+Files:
+- file1
+- subdir/file2
+- eval-datasets/<datasetId>.json
+- .eval-trajectory.json
+- eval-checkpoint.json
+- eval-check-results.json
+
+## Agent Conversation Log (tool calls)           ← jen pokud máme events
+\`\`\`
+→ Bash({"command":"..."})
+  "agent text"
+→ Read({"file_path":"..."})
+\`\`\`
+
+## Checkpoint Criteria
+{judge.prompt z ### Judge bloku}
+
+Evaluate carefully. Return your verdict (pass/fail/unclear) with reasoning that references specific evidence from the output.
+```
+
+Workspace file listing je dynamický a rekurzivní (`listWorkspaceFiles`), s `SKIP_DIRS = {node_modules, .git, dist, storage}`. Conversation log (`formatConversationLog`) renderuje jen `assistant` eventy — `tool_use` jako `→ Name(jsonInput)`, text bloky jako `  "..."`.
+
+### Judge schemas (dva)
+- **Běžný Judge** (`VERDICT_SCHEMA`): `{verdict: "pass"|"fail"|"unclear", reasoning: string, eval_critique?: string}`
+- **`### eval-Judge`** (`EVAL_REVIEW_SCHEMA`): `{eval_gap_severity: "critical"|"noncritical"|"ok", reasoning: string}` — hodnotí kvalitu **eval frameworku**, ne agent výstupu. Produkuje `checkType: 'eval-review'` a `evalGapSeverity` v `CheckVerdict`. **Je vyloučen z `computeOverall`** (`judge.ts:480`).
+
+### Více judge bloků + tři severity
+- Checkpoint může mít N `### Judge` / `### warn-Judge` / `### eval-Judge` bloků — každý = samostatný LLM call → samostatný verdict
+- `fail` (default) — fail verdict shodí overall
+- `warn` — fail verdict se mapuje na `warning`, neshodí overall
+- `eval` — nikdy nešodí overall (meta-eval frameworku, není o agentovi)
+- Agregace `computeOverall`: `platform_failure` > `fail` > `warning` > `unclear` > `pass` (eval-review se ignoruje)
+
+Retry: max 2 pokusy s exponential delay (1s, 2s). Po vyčerpání → `unclear` (bez confidence).
+
+### platform_failure verdict
+
+Pátá hodnota `VerdictValue` (`types.ts:25`). Pokud runner detekuje v `tool_use_result` eventech Apify memory limit chybu (regex `/exceed the memory limit|memory limit.*exceeded|cannot allocate memory/i`, `judge.ts:357-372`), checkpoint dostane verdict `platform_failure` místo `fail`. V agregaci má přednost nad `fail` — odlišuje "agent selhal" vs. "platforma zabila proces". Pro autora scénáře = signál, že je potřeba zvýšit memory limit, ne fixovat agenta.
+
+### Apify dataset auto-download
+
+Pokud agent v eventech zmíní Apify `defaultDatasetId` (17-znakové ID), runner ho automaticky stáhne přes API do `<workdir>/eval-datasets/<id>.json`. Judge i script checkpointy ho pak vidí jako workspace soubor — můžeš nad ním pouštět `jq`, validovat schéma, nebo nechat LLM judge zkontrolovat obsah. Implementace: `shared/src/apify-datasets.ts`.
 
 ## OTel instrumentace
 

@@ -43,9 +43,9 @@
             "default": 1.00
         },
         "maxRetries": {
-            "title": "Max Retries on Failure",
+            "title": "Max Retries on Failure (experimental)",
             "type": "integer",
-            "description": "Retry a failed test this many times before marking as failed. Useful for non-deterministic tasks.",
+            "description": "⚠️ Experimental. Retry a failed test this many times before marking as failed. Each retry uses a fresh workspace, but results may still be inconsistent due to agent caching, auth state, and non-determinism. Recommended: 0 (single run).",
             "default": 0,
             "minimum": 0,
             "maximum": 5
