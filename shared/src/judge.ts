@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -7,7 +7,7 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
-import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, MAX_WORKSPACE_FILES, JUDGE_MODEL_MAP } from './constants.js';
+import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
 
@@ -310,50 +310,22 @@ export interface JudgeOptions {
     onJudgeRawLine?: (line: string) => void;
 }
 
-const DEFAULT_MAX_FILES = MAX_WORKSPACE_FILES;
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'storage']);
 
-const MAX_TOTAL_WORKSPACE_CHARS = 200_000;
-
-function collectWorkspaceFiles(dir: string, maxFiles: number): string {
-    const files: Array<{ path: string; content: string }> = [];
-    let totalChars = 0;
-
+function listWorkspaceFiles(dir: string): string[] {
+    const files: string[] = [];
     function walk(currentDir: string): void {
-        if (files.length >= maxFiles || totalChars >= MAX_TOTAL_WORKSPACE_CHARS) return;
         try {
-            const entries = readdirSync(currentDir, { withFileTypes: true });
-            for (const entry of entries) {
-                if (files.length >= maxFiles || totalChars >= MAX_TOTAL_WORKSPACE_CHARS) return;
+            for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+                if (SKIP_DIRS.has(entry.name)) continue;
                 const fullPath = join(currentDir, entry.name);
-
-                if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'storage') continue;
-
-                if (entry.isDirectory()) {
-                    walk(fullPath);
-                } else if (entry.isFile()) {
-                    try {
-                        const content = readFileSync(fullPath, 'utf-8');
-                        files.push({ path: relative(dir, fullPath), content });
-                        totalChars += content.length;
-                    } catch { /* skip unreadable files */ }
-                }
+                if (entry.isDirectory()) walk(fullPath);
+                else if (entry.isFile()) files.push(relative(dir, fullPath));
             }
         } catch { /* skip unreadable dirs */ }
     }
-
     walk(dir);
-
-    if (files.length === 0) return '';
-
-    let result = '\n\n## Files in Workspace\n\n' + files.map((f) =>
-        `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``,
-    ).join('\n\n');
-
-    if (totalChars >= MAX_TOTAL_WORKSPACE_CHARS) {
-        result += `\n\n_Note: workspace collection stopped at ${MAX_TOTAL_WORKSPACE_CHARS} chars total (${files.length} files). Some files may not be shown._`;
-    }
-
-    return result;
+    return files;
 }
 
 function formatConversationLog(events: JudgeOptions['events']): string {
@@ -440,15 +412,15 @@ export async function judgeAllChecks(
     for (const judge of parsed.judges) {
         let enrichedOutput = agentOutput;
         if (options?.workDir) {
-            enrichedOutput += `\n\n## Workspace (use Read/Bash to inspect)\n`;
-            enrichedOutput += `Working directory: ${options.workDir}\n`;
-            enrichedOutput += `Available files (read on demand, do NOT rely on memory):\n`;
-            enrichedOutput += `- eval-datasets/*.json — Apify actor run results (scraped data for grounding)\n`;
-            enrichedOutput += `- /tmp/*.json — data files the agent may have saved locally\n`;
-            enrichedOutput += `- eval-checkpoint.json — deterministic check definitions\n`;
-            enrichedOutput += `- eval-check-results.json — deterministic check pass/fail results\n`;
-            enrichedOutput += `- skills/ — skill definition, actor schemas, module references, verification checklist\n`;
-            enrichedOutput += `- .eval-trajectory.json — agent tool calls and commands\n`;
+            const wsFiles = listWorkspaceFiles(options.workDir);
+            if (wsFiles.length > 0) {
+                enrichedOutput += `\n\n## Workspace (use Read/Bash to inspect)\n`;
+                enrichedOutput += `Working directory: ${options.workDir}\n`;
+                enrichedOutput += `Files:\n`;
+                for (const f of wsFiles) {
+                    enrichedOutput += `- ${f}\n`;
+                }
+            }
         }
         if (options?.events) {
             enrichedOutput += formatConversationLog(options.events);

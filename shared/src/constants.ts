@@ -6,5 +6,4 @@ export const JUDGE_MODEL_MAP: Record<string, string> = {
 };
 export const SCRIPT_TIMEOUT_MS = 60_000;
 export const INIT_SCRIPT_TIMEOUT_MS = 300_000;
-export const MAX_WORKSPACE_FILES = 20;
 export const JQ_TIMEOUT_MS = 30_000;
