@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics } from '../types.js';
+import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, HungWarning } from '../types.js';
 import { getAgentDef, buildAgentArgs } from './registry.js';
 
 export interface AgentRunOptions {
@@ -35,6 +35,7 @@ export interface AgentRunResult {
     error: string | null;
     stopReason: string;
     stderr: string;
+    hungWarnings: HungWarning[];
 }
 
 export const EMPTY_METRICS: RunMetrics = {
@@ -517,6 +518,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             error: `Unknown agent: ${options.agent}. Available: claude-code, codex, opencode`,
             stopReason: 'error',
             stderr: '',
+            hungWarnings: [],
         });
     }
 
@@ -565,10 +567,24 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         }
 
         const events: AgentEvent[] = [];
+        const hungWarnings: HungWarning[] = [];
+        let lastEventTime = Date.now();
+        const HUNG_THRESHOLD_MS = 300_000;
+        const hungTimer = setInterval(() => {
+            const silence = Date.now() - lastEventTime;
+            if (silence >= HUNG_THRESHOLD_MS) {
+                hungWarnings.push({
+                    elapsedMs: Date.now() - startTime,
+                    silenceSecs: Math.round(silence / 1000),
+                });
+            }
+        }, 30_000);
+
         const rl = createInterface({ input: child.stdout! });
 
         rl.on('line', (line) => {
             if (!line.trim()) return;
+            lastEventTime = Date.now();
             options.onRawLine?.(line);
             try {
                 const event = JSON.parse(line) as AgentEvent;
@@ -581,6 +597,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         child.stderr?.on('data', (d: Buffer) => { stderrOutput += d.toString(); });
 
         child.on('close', (code, signal) => {
+            clearInterval(hungTimer);
             const wallDurationMs = Date.now() - startTime;
 
             // Select parser based on agent
@@ -634,10 +651,12 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 error,
                 stopReason,
                 stderr: stderrOutput,
+                hungWarnings,
             });
         });
 
         child.on('error', (err) => {
+            clearInterval(hungTimer);
             resolve({
                 text: '',
                 metrics: { ...EMPTY_METRICS, durationMs: Date.now() - startTime },
@@ -650,6 +669,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 error: `Failed to spawn ${def.command}: ${err.message}`,
                 stopReason: 'error',
                 stderr: '',
+                hungWarnings,
             });
         });
     });

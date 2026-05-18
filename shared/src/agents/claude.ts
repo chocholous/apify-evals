@@ -10,12 +10,14 @@ export interface ClaudeJudgeOptions {
     maxRetries?: number;
     env?: Record<string, string>;
     onRawLine?: (line: string) => void;
+    isEvalReview?: boolean;
 }
 
 export interface JudgeLlmResult {
     verdict: string;
     reasoning: string;
     eval_critique?: string;
+    eval_gap_severity?: string;
 }
 
 const VERDICT_SCHEMA = JSON.stringify({
@@ -38,6 +40,22 @@ const VERDICT_SCHEMA = JSON.stringify({
     required: ['verdict', 'reasoning'],
 });
 
+const EVAL_REVIEW_SCHEMA = JSON.stringify({
+    type: 'object',
+    properties: {
+        eval_gap_severity: {
+            type: 'string',
+            enum: ['critical', 'noncritical', 'ok'],
+            description: 'critical = eval framework completely misses core goals or has errors that would pass clearly bad output. noncritical = minor gaps, unlikely to miss truly bad output. ok = eval framework is solid, no significant gaps.',
+        },
+        reasoning: {
+            type: 'string',
+            description: 'Your analysis of the eval framework gaps. Be specific — cite check definitions and results.',
+        },
+    },
+    required: ['eval_gap_severity', 'reasoning'],
+});
+
 function judgeLlmOnce(options: ClaudeJudgeOptions): Promise<{ result: JudgeLlmResult | null; error: string | null }> {
     const JUDGE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -53,12 +71,14 @@ ${options.checkpoint}
 
 Evaluate carefully. Return your verdict (pass/fail/unclear) with reasoning that references specific evidence from the output.`;
 
+        const schema = options.isEvalReview ? EVAL_REVIEW_SCHEMA : VERDICT_SCHEMA;
+
         const child = spawn('claude', [
             '-p', prompt,
             '--output-format', 'stream-json',
             '--verbose',
             '--include-partial-messages',
-            '--json-schema', VERDICT_SCHEMA,
+            '--json-schema', schema,
             '--model', options.model ?? JUDGE_MODEL,
             '--dangerously-skip-permissions',
             '--no-session-persistence',

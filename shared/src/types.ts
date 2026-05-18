@@ -24,7 +24,9 @@ export interface ParsedScenario {
 
 export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear' | 'platform_failure';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'error';
+export type EvalGapSeverity = 'critical' | 'noncritical' | 'ok';
+
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error';
 
 export interface CheckVerdict {
     checkType: CheckType;
@@ -32,6 +34,7 @@ export interface CheckVerdict {
     verdict: VerdictValue;
     evidence: string;
     evalCritique?: string;
+    evalGapSeverity?: EvalGapSeverity;
 }
 
 // Base token/cost metrics (raw from agent)
@@ -96,6 +99,11 @@ export interface ModelUsage {
     costUSD: number;
 }
 
+export interface HungWarning {
+    elapsedMs: number;              // time since agent start when silence was detected
+    silenceSecs: number;            // how long the agent was silent
+}
+
 export interface JudgeMetrics {
     judgeCostUsd: number;           // cost of LLM judge calls
     judgeLatencyMs: number;        // time spent in judge (all checks)
@@ -124,6 +132,7 @@ export interface AgentResult {
     aborted: boolean;
     abortReason: string | null;
     error: string | null;
+    hungWarnings: HungWarning[];
 }
 
 export type AgentType = 'claude-code' | 'codex' | 'opencode';

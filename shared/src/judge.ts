@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
-import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
+import type { CheckVerdict, CheckType, VerdictValue, EvalGapSeverity } from './types.js';
 import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
@@ -19,7 +19,7 @@ export interface CheckpointSpec {
 
 export interface JudgeSpec {
     prompt: string;
-    severity: 'fail' | 'warning';
+    severity: 'fail' | 'warning' | 'eval';
     model?: string;
 }
 
@@ -47,7 +47,7 @@ function resolveJudgeModel(alias?: string): string | undefined {
 // Recognized top-level checkpoint section headers. Only these break section boundaries;
 // any other `### X` inside a section body (e.g. markdown sub-headers in a Judge prompt)
 // is treated as content, not as a new section.
-const SECTION_HEADER_REGEX = /^###\s+(Checks?|Scripts?|(?:warn-)?Judge(?:\s*\([^)]*\))?)\s*$/gim;
+const SECTION_HEADER_REGEX = /^###\s+(Checks?|Scripts?|(?:warn-|eval-)?Judge(?:\s*\([^)]*\))?)\s*$/gim;
 
 function parseSubsections(checkpoint: string): ParsedCheckpoint {
     const checks: CheckpointSpec[] = [];
@@ -76,9 +76,12 @@ function parseSubsections(checkpoint: string): ParsedCheckpoint {
         } else if (/^Scripts?$/i.test(label)) {
             checks.push({ type: 'script', value: body, severity: 'fail' });
         } else {
-            const judgeMatch = label.match(/^(?:(warn)-)?Judge(?:\s*\(([^)]*)\))?$/i);
+            const judgeMatch = label.match(/^(?:(warn|eval)-)?Judge(?:\s*\(([^)]*)\))?$/i);
             if (!judgeMatch) continue;
-            const severity = judgeMatch[1] ? 'warning' as const : 'fail' as const;
+            const prefix = judgeMatch[1]?.toLowerCase();
+            const severity = prefix === 'eval' ? 'eval' as const
+                : prefix === 'warn' ? 'warning' as const
+                : 'fail' as const;
             const model = resolveJudgeModel(judgeMatch[2]);
             judges.push({ prompt: body, severity, model });
         }
@@ -410,6 +413,8 @@ export async function judgeAllChecks(
     }
 
     for (const judge of parsed.judges) {
+        const isEvalReview = judge.severity === 'eval';
+
         let enrichedOutput = agentOutput;
         if (options?.workDir) {
             const wsFiles = listWorkspaceFiles(options.workDir);
@@ -432,26 +437,37 @@ export async function judgeAllChecks(
             model: judge.model ?? options?.judgeModel,
             env: options?.env,
             onRawLine: options?.onJudgeRawLine,
+            isEvalReview,
         });
 
-        const failVerdict = judge.severity === 'warning' ? 'warning' as const : 'fail' as const;
-
-        if (llmResult) {
-            const verdict = llmResult.verdict === 'fail' ? failVerdict : llmResult.verdict as VerdictValue;
+        if (isEvalReview) {
+            const severity = (llmResult?.eval_gap_severity ?? 'noncritical') as EvalGapSeverity;
             verdicts.push({
-                checkType: 'llm-judge',
+                checkType: 'eval-review',
                 checkValue: judge.prompt,
-                verdict,
-                evidence: llmResult.reasoning,
-                evalCritique: llmResult.eval_critique || undefined,
+                verdict: 'pass',
+                evidence: llmResult?.reasoning ?? 'LLM eval-review returned no result after retries',
+                evalGapSeverity: severity,
             });
         } else {
-            verdicts.push({
-                checkType: 'llm-judge',
-                checkValue: judge.prompt,
-                verdict: 'unclear',
-                evidence: 'LLM judge returned no result after retries',
-            });
+            const failVerdict = 'fail' as const;
+            if (llmResult) {
+                const verdict = llmResult.verdict === 'fail' ? failVerdict : llmResult.verdict as VerdictValue;
+                verdicts.push({
+                    checkType: 'llm-judge',
+                    checkValue: judge.prompt,
+                    verdict,
+                    evidence: llmResult.reasoning,
+                    evalCritique: llmResult.eval_critique || undefined,
+                });
+            } else {
+                verdicts.push({
+                    checkType: 'llm-judge',
+                    checkValue: judge.prompt,
+                    verdict: 'unclear',
+                    evidence: 'LLM judge returned no result after retries',
+                });
+            }
         }
     }
 
@@ -460,10 +476,12 @@ export async function judgeAllChecks(
 }
 
 function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
-    if (verdicts.length === 0) return 'unclear';
-    if (verdicts.some((v) => v.verdict === 'platform_failure')) return 'platform_failure';
-    if (verdicts.some((v) => v.verdict === 'fail')) return 'fail';
-    if (verdicts.some((v) => v.verdict === 'warning')) return 'warning';
-    if (verdicts.some((v) => v.verdict === 'unclear')) return 'unclear';
+    // eval-review checks grade the eval framework itself, not the agent output
+    const agentVerdicts = verdicts.filter((v) => v.checkType !== 'eval-review');
+    if (agentVerdicts.length === 0) return 'pass';
+    if (agentVerdicts.some((v) => v.verdict === 'platform_failure')) return 'platform_failure';
+    if (agentVerdicts.some((v) => v.verdict === 'fail')) return 'fail';
+    if (agentVerdicts.some((v) => v.verdict === 'warning')) return 'warning';
+    if (agentVerdicts.some((v) => v.verdict === 'unclear')) return 'unclear';
     return 'pass';
 }

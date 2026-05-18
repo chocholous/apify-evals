@@ -193,6 +193,11 @@ for (let i = 0; i < tests.length; i++) {
         }
 
         log.info(`  Agent responded (${result.metrics.numTurns} turns, ${formatCost(result.metrics.totalCostUsd)}, ${formatDuration(result.metrics.durationMs)})`);
+        if (result.hungWarnings.length > 0) {
+            for (const hw of result.hungWarnings) {
+                log.warning(`  ⚠ Hung turn detected: ${hw.silenceSecs}s silence at ${formatDuration(hw.elapsedMs)}`);
+            }
+        }
 
         // Write trajectory to workspace so script checkpoints can verify agent behavior
         try {
@@ -263,8 +268,14 @@ for (let i = 0; i < tests.length; i++) {
         }));
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
         for (const v of judgeResult.verdicts) {
-            const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
-            log.info(`    ${icon} ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+            if (v.checkType === 'eval-review') {
+                const gap = v.evalGapSeverity ?? 'noncritical';
+                const icon = gap === 'ok' ? '✓' : gap === 'critical' ? '✗' : '⚠';
+                log.info(`    ${icon} eval-review: ${gap} — ${v.evidence.slice(0, 80)}`);
+            } else {
+                const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
+                log.info(`    ${icon} ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+            }
         }
 
         if (judgeResult.overallVerdict === 'pass') break;
@@ -294,6 +305,7 @@ for (let i = 0; i < tests.length; i++) {
         aborted: lastRunResult?.aborted ?? false,
         abortReason: lastRunResult?.aborted ? 'budget_exceeded' : null,
         error: lastRunResult?.error ?? null,
+        hungWarnings: lastRunResult?.hungWarnings ?? [],
     };
 
     endTestSpan(testSpan, agentResult.overallVerdict);
