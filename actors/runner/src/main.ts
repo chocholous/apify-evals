@@ -2,6 +2,7 @@ import { setTimeout } from 'node:timers/promises';
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from '@apify-evals/shared';
@@ -205,6 +206,46 @@ for (let i = 0; i < tests.length; i++) {
                 uniqueToolsUsed: result.trajectory.uniqueToolsUsed,
             };
             writeFileSync(join(currentWorkDir, '.eval-trajectory.json'), JSON.stringify(trajectoryData, null, 2));
+        } catch { /* non-critical */ }
+
+        // Download Apify datasets created during agent run so judge can verify data
+        try {
+            const datasetIds = new Set<string>();
+            for (const cmd of result.trajectory.commandsExecuted) {
+                for (const m of cmd.matchAll(/datasets\s+get-items\s+(\S+)/g)) {
+                    datasetIds.add(m[1]);
+                }
+                const callMatch = cmd.match(/actors?\s+call\b/);
+                if (callMatch) {
+                    for (const m of cmd.matchAll(/defaultDatasetId["']?\s*[:=]\s*["']?(\w+)/g)) {
+                        datasetIds.add(m[1]);
+                    }
+                }
+            }
+            // Also extract dataset IDs from tool results in events
+            for (const event of result.events) {
+                const tur = (event as unknown as Record<string, unknown>).tool_use_result as Record<string, unknown> | undefined;
+                if (tur?.stdout) {
+                    const stdout = tur.stdout as string;
+                    for (const m of stdout.matchAll(/"defaultDatasetId"\s*:\s*"(\w+)"/g)) {
+                        datasetIds.add(m[1]);
+                    }
+                }
+            }
+            if (datasetIds.size > 0) {
+                const dsDir = join(currentWorkDir, 'eval-datasets');
+                mkdirSync(dsDir, { recursive: true });
+                for (const dsId of datasetIds) {
+                    try {
+                        const items = execSync(
+                            `curl -s "https://api.apify.com/v2/datasets/${dsId}/items?format=json"`,
+                            { timeout: 30_000, encoding: 'utf-8', env: { ...process.env, ...secrets } },
+                        );
+                        writeFileSync(join(dsDir, `${dsId}.json`), items);
+                    } catch { /* skip failed downloads */ }
+                }
+                log.info(`  Downloaded ${datasetIds.size} dataset(s) to eval-datasets/`);
+            }
         } catch { /* non-critical */ }
 
         // Monitor extraction
