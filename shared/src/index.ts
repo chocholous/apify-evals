@@ -7,6 +7,8 @@ export { maskSecrets, maskEventsJsonl, stripEnvFromProcess } from './log-masker.
 export { runInitPreset } from './init-presets.js';
 export { initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan } from './otel.js';
 export { spansToOtlpJson, BufferSpanExporter } from './otel-exporter.js';
+export { downloadApifyDatasets, extractDatasetIdsFromEvents } from './apify-datasets.js';
+export type { DatasetDownloadResult } from './apify-datasets.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
 export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, JudgeMetrics, AgentEvent, ModelUsage, AgentType } from './types.js';
