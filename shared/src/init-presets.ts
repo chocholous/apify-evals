@@ -33,10 +33,10 @@ function runScript(script: string, workDir: string, label: string): { success: b
             stdio: ['ignore', 'pipe', 'pipe'],
             shell: '/bin/bash',
         });
-        return { success: true, output: output.toString().slice(0, 1000) };
+        return { success: true, output: output.toString() };
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        return { success: false, output: `${label} failed: ${msg.slice(0, 500)}` };
+        return { success: false, output: `${label} failed: ${msg}` };
     }
 }
 

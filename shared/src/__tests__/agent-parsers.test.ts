@@ -259,7 +259,7 @@ describe('parseClaudeStream', () => {
         expect(traj.perTurnToolCalls[1].tools).toEqual([]);
     });
 
-    it('truncates large tool inputs to TOOL_INPUT_MAX_CHARS', () => {
+    it('preserves full tool inputs without truncation', () => {
         const longInput = 'x'.repeat(1000);
         const events: AgentEvent[] = [
             {
@@ -276,7 +276,7 @@ describe('parseClaudeStream', () => {
 
         const parsed = parseClaudeStream(events);
         const detail = parsed.getTrajectoryData().toolCallDetails[0];
-        expect((detail.input.content as string).length).toBe(500);
+        expect((detail.input.content as string).length).toBe(1000);
     });
 
     it('ignores stream_event events from --include-partial-messages', () => {

@@ -4,7 +4,6 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics } from '../types.js';
-import { TOOL_INPUT_MAX_CHARS } from '../constants.js';
 import { getAgentDef, buildAgentArgs } from './registry.js';
 
 export interface AgentRunOptions {
@@ -182,14 +181,7 @@ export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
                     toolCalls.push(name);
                     currentCallTools.push(name);
 
-                    // Capture tool call details (truncate large values)
-                    const truncatedInput: Record<string, unknown> = {};
-                    if (rawInput) {
-                        for (const [k, v] of Object.entries(rawInput)) {
-                            truncatedInput[k] = typeof v === 'string' ? v.slice(0, TOOL_INPUT_MAX_CHARS) : v;
-                        }
-                    }
-                    toolCallDetails.push({ tool: name, turn: apiCallNum, input: truncatedInput });
+                    toolCallDetails.push({ tool: name, turn: apiCallNum, input: rawInput ?? {} });
 
                     if (name.startsWith('mcp__')) mcpTools.push(name);
                     if (name === 'Write') {
@@ -204,7 +196,7 @@ export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
                         const input = block.input as Record<string, unknown> | undefined;
                         if (input?.command) {
                             const cmd = input.command as string;
-                            commands.push(cmd.slice(0, 200));
+                            commands.push(cmd);
                             const bashFileOps = extractFileOpsFromCommand(cmd);
                             files.created.push(...bashFileOps.created);
                             files.modified.push(...bashFileOps.modified);
@@ -302,7 +294,7 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
                 toolCalls.push('command_execution');
                 currentTurnTools.push('command_execution');
                 if (event.item.command) {
-                    commands.push(event.item.command.slice(0, 200));
+                    commands.push(event.item.command);
                     const bashFileOps = extractFileOpsFromCommand(event.item.command);
                     files.created.push(...bashFileOps.created);
                     files.modified.push(...bashFileOps.modified);
@@ -414,7 +406,7 @@ export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
             if (toolName === 'bash' || toolName === 'command') {
                 const input = event.part.state?.input as Record<string, unknown> | undefined;
                 const cmd = input?.command as string | undefined;
-                if (cmd) commands.push(cmd.slice(0, 200));
+                if (cmd) commands.push(cmd);
             }
             if (toolName.includes('mcp') || toolName.includes(':')) {
                 mcpTools.push(toolName);
@@ -614,7 +606,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             // Error detection: stream error OR non-zero exit without stream error
             let error = parsed.getError();
             if (!error && code !== 0 && code !== null) {
-                error = stderrOutput.trim().slice(0, 500) || `Agent exited with code ${code}`;
+                error = stderrOutput.trim() || `Agent exited with code ${code}`;
             }
 
             const stopReason = error ? 'error' : parsed.getStopReason();
@@ -641,7 +633,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 aborted,
                 error,
                 stopReason,
-                stderr: stderrOutput.slice(0, 2000),
+                stderr: stderrOutput,
             });
         });
 

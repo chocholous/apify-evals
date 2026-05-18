@@ -7,7 +7,7 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
-import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, TOOL_INPUT_MAX_CHARS, JUDGE_MODEL_MAP } from './constants.js';
+import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, MAX_WORKSPACE_FILES, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
 
@@ -150,13 +150,13 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             shell: '/bin/bash',
             env: options?.env ? { ...process.env, ...options.env } : process.env,
         });
-        const evidence = stdout.toString().trim().slice(0, EVIDENCE_MAX_CHARS) || 'Script exited with code 0';
+        const evidence = stdout.toString().trim() || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence };
     } catch (err: unknown) {
         const error = err as { status?: number; stdout?: Buffer; stderr?: Buffer; message?: string };
         if (error.status !== undefined && error.status !== null) {
-            const stdout = error.stdout?.toString().trim().slice(0, 500) ?? '';
-            const stderr = error.stderr?.toString().trim().slice(0, 500) ?? '';
+            const stdout = error.stdout?.toString().trim() ?? '';
+            const stderr = error.stderr?.toString().trim() ?? '';
             const evidence = stdout || stderr || `Script exited with code ${error.status}`;
             return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence };
         }
@@ -164,7 +164,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
         if (msg.includes('ETIMEDOUT') || msg.includes('timed out')) {
             return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence: `Script timed out after ${timeoutMs}ms` };
         }
-        return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence: `Script error: ${msg.slice(0, 500)}` };
+        return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence: `Script error: ${msg}` };
     }
 }
 
@@ -182,13 +182,13 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
             shell: '/bin/bash',
             env: options?.env ? { ...process.env, ...options.env } : process.env,
         });
-        const evidence = stdout.toString().trim().slice(0, EVIDENCE_MAX_CHARS) || 'jq expression returned truthy';
+        const evidence = stdout.toString().trim() || 'jq expression returned truthy';
         return { checkType: 'jq', checkValue: expression, verdict: 'pass', evidence };
     } catch (err: unknown) {
         const error = err as { status?: number; stdout?: Buffer; stderr?: Buffer; message?: string };
         if (error.status !== undefined && error.status !== null) {
-            const stdout = error.stdout?.toString().trim().slice(0, 500) ?? '';
-            const stderr = error.stderr?.toString().trim().slice(0, 500) ?? '';
+            const stdout = error.stdout?.toString().trim() ?? '';
+            const stderr = error.stderr?.toString().trim() ?? '';
             const evidence = stderr || stdout || `jq exited with code ${error.status}`;
             return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence };
         }
@@ -196,7 +196,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
         if (msg.includes('ETIMEDOUT') || msg.includes('timed out')) {
             return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence: `jq timed out after ${timeoutMs}ms` };
         }
-        return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence: `jq error: ${msg.slice(0, 500)}` };
+        return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence: `jq error: ${msg}` };
     } finally {
         try { unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
     }
@@ -235,7 +235,7 @@ function judgeJsonSchema(agentOutput: string, schemaStr: string): CheckVerdict {
     try {
         schema = JSON.parse(schemaStr);
     } catch {
-        return { checkType: 'json-schema', checkValue: schemaStr, verdict: 'fail', evidence: `Invalid JSON schema definition: ${schemaStr.slice(0, 200)}` };
+        return { checkType: 'json-schema', checkValue: schemaStr, verdict: 'fail', evidence: `Invalid JSON schema definition: ${schemaStr}` };
     }
 
     if (Object.keys(schema).length === 0) {
@@ -356,27 +356,19 @@ function collectWorkspaceFiles(dir: string, maxFiles: number): string {
     return result;
 }
 
-function formatConversationLog(events: JudgeOptions['events'], maxChars = 8000): string {
+function formatConversationLog(events: JudgeOptions['events']): string {
     if (!events || events.length === 0) return '';
 
     const lines: string[] = [];
-    let totalChars = 0;
 
     for (const event of events) {
         if (event.type !== 'assistant' || !event.message?.content) continue;
         for (const block of event.message.content) {
             if (block.type === 'tool_use' && block.name) {
-                const inputStr = block.input ? JSON.stringify(block.input).slice(0, TOOL_INPUT_MAX_CHARS) : '';
-                const line = `→ ${block.name}(${inputStr})`;
-                totalChars += line.length;
-                if (totalChars > maxChars) return '\n\n## Agent Conversation Log (tool calls)\n\n```\n' + lines.join('\n') + '\n[truncated]\n```';
-                lines.push(line);
+                const inputStr = block.input ? JSON.stringify(block.input) : '';
+                lines.push(`→ ${block.name}(${inputStr})`);
             } else if (block.type === 'text' && block.text) {
-                const preview = block.text.slice(0, 200).replace(/\n/g, ' ');
-                const line = `  "${preview}"`;
-                totalChars += line.length;
-                if (totalChars > maxChars) return '\n\n## Agent Conversation Log (tool calls)\n\n```\n' + lines.join('\n') + '\n[truncated]\n```';
-                lines.push(line);
+                lines.push(`  "${block.text.replace(/\n/g, ' ')}"`);
             }
         }
     }
@@ -400,7 +392,7 @@ function detectPlatformFailures(events?: JudgeOptions['events']): CheckVerdict |
                 checkType: 'error',
                 checkValue: 'platform_failure:memory',
                 verdict: 'platform_failure',
-                evidence: (result.stdout as string).slice(0, 300),
+                evidence: result.stdout as string,
             };
         }
     }
@@ -435,11 +427,11 @@ export async function judgeAllChecks(
     if (options?.workDir) {
         try {
             writeFileSync(join(options.workDir, 'eval-checkpoint.json'), JSON.stringify(
-                parsed.checks.map(c => ({ type: c.type, value: c.value.slice(0, 200), severity: c.severity })),
+                parsed.checks.map(c => ({ type: c.type, value: c.value, severity: c.severity })),
                 null, 2,
             ));
             writeFileSync(join(options.workDir, 'eval-check-results.json'), JSON.stringify(
-                verdicts.map(v => ({ checkType: v.checkType, verdict: v.verdict, evidence: v.evidence.slice(0, 300), checkValue: v.checkValue.slice(0, 200) })),
+                verdicts.map(v => ({ checkType: v.checkType, verdict: v.verdict, evidence: v.evidence, checkValue: v.checkValue })),
                 null, 2,
             ));
         } catch { /* ignore write errors */ }
