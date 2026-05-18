@@ -7,7 +7,7 @@ import _Ajv, { type ErrorObject } from 'ajv';
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 
 import type { CheckVerdict, CheckType, VerdictValue } from './types.js';
-import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_SIZE, TOOL_INPUT_MAX_CHARS, JUDGE_MODEL_MAP } from './constants.js';
+import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, EVIDENCE_MAX_CHARS, MAX_WORKSPACE_FILES, TOOL_INPUT_MAX_CHARS, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
 
@@ -311,33 +311,30 @@ export interface JudgeOptions {
 }
 
 const DEFAULT_MAX_FILES = MAX_WORKSPACE_FILES;
-const DEFAULT_MAX_FILE_SIZE = MAX_WORKSPACE_FILE_SIZE;
 
-function collectWorkspaceFiles(dir: string, maxFiles: number, maxFileSize: number): string {
+const MAX_TOTAL_WORKSPACE_CHARS = 200_000;
+
+function collectWorkspaceFiles(dir: string, maxFiles: number): string {
     const files: Array<{ path: string; content: string }> = [];
+    let totalChars = 0;
 
     function walk(currentDir: string): void {
-        if (files.length >= maxFiles) return;
+        if (files.length >= maxFiles || totalChars >= MAX_TOTAL_WORKSPACE_CHARS) return;
         try {
             const entries = readdirSync(currentDir, { withFileTypes: true });
             for (const entry of entries) {
-                if (files.length >= maxFiles) return;
+                if (files.length >= maxFiles || totalChars >= MAX_TOTAL_WORKSPACE_CHARS) return;
                 const fullPath = join(currentDir, entry.name);
 
-                // Skip node_modules, .git, dist, storage
                 if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'storage') continue;
 
                 if (entry.isDirectory()) {
                     walk(fullPath);
                 } else if (entry.isFile()) {
                     try {
-                        const stat = statSync(fullPath);
-                        if (stat.size > maxFileSize * 2) {
-                            files.push({ path: relative(dir, fullPath), content: `[file too large: ${stat.size} bytes]` });
-                        } else {
-                            const content = readFileSync(fullPath, 'utf-8').slice(0, maxFileSize);
-                            files.push({ path: relative(dir, fullPath), content });
-                        }
+                        const content = readFileSync(fullPath, 'utf-8');
+                        files.push({ path: relative(dir, fullPath), content });
+                        totalChars += content.length;
                     } catch { /* skip unreadable files */ }
                 }
             }
@@ -348,9 +345,15 @@ function collectWorkspaceFiles(dir: string, maxFiles: number, maxFileSize: numbe
 
     if (files.length === 0) return '';
 
-    return '\n\n## Files in Workspace\n\n' + files.map((f) =>
+    let result = '\n\n## Files in Workspace\n\n' + files.map((f) =>
         `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``,
     ).join('\n\n');
+
+    if (totalChars >= MAX_TOTAL_WORKSPACE_CHARS) {
+        result += `\n\n_Note: workspace collection stopped at ${MAX_TOTAL_WORKSPACE_CHARS} chars total (${files.length} files). Some files may not be shown._`;
+    }
+
+    return result;
 }
 
 function formatConversationLog(events: JudgeOptions['events'], maxChars = 8000): string {
@@ -444,9 +447,9 @@ export async function judgeAllChecks(
 
     for (const judge of parsed.judges) {
         let enrichedOutput = agentOutput;
-        enrichedOutput += '\n\n## Verification context\n';
-        enrichedOutput += '- .eval-trajectory.json: agent tool calls, commands executed, files created\n';
-        enrichedOutput += '- You have full tool access (Read, Bash) to inspect workspace files and /tmp/ if needed\n';
+        if (options?.workDir) {
+            enrichedOutput += collectWorkspaceFiles(options.workDir, DEFAULT_MAX_FILES);
+        }
         if (options?.events) {
             enrichedOutput += formatConversationLog(options.events);
         }
