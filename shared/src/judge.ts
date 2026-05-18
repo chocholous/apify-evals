@@ -44,14 +44,19 @@ function resolveJudgeModel(alias?: string): string | undefined {
     return JUDGE_MODEL_MAP[lower] ?? alias;
 }
 
+// Recognized top-level checkpoint section headers. Only these break section boundaries;
+// any other `### X` inside a section body (e.g. markdown sub-headers in a Judge prompt)
+// is treated as content, not as a new section.
+const SECTION_HEADER_REGEX = /^###\s+(Checks?|Scripts?|(?:warn-)?Judge(?:\s*\([^)]*\))?)\s*$/gim;
+
 function parseSubsections(checkpoint: string): ParsedCheckpoint {
     const checks: CheckpointSpec[] = [];
     const judges: JudgeSpec[] = [];
 
-    const headerRegex = /^###\s+(.+)$/gim;
     const headers: Array<{ label: string; bodyStart: number; headerStart: number }> = [];
     let m: RegExpExecArray | null;
-    while ((m = headerRegex.exec(checkpoint)) !== null) {
+    SECTION_HEADER_REGEX.lastIndex = 0;
+    while ((m = SECTION_HEADER_REGEX.exec(checkpoint)) !== null) {
         headers.push({ label: m[1].trim(), bodyStart: m.index + m[0].length, headerStart: m.index });
     }
 

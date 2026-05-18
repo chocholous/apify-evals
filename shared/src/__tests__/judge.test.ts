@@ -218,6 +218,38 @@ Check style.`;
         expect(result.judges[0]).toEqual({ prompt: 'Check correctness.', severity: 'fail', model: undefined });
         expect(result.judges[1]).toEqual({ prompt: 'Check style.', severity: 'warning', model: 'claude-haiku-4-5-20251001' });
     });
+
+    it('preserves nested ### markdown sub-headers inside Judge body', () => {
+        // Regression: parser previously split on every ### header, so ### A:/### B:
+        // inside a Judge prompt were treated as separate (unrecognized) sections and
+        // their body was discarded — Judge received only the preamble up to the
+        // first inner ### header.
+        const checkpoint = `### Judge
+You are evaluating a report.
+
+### A: Prompt Coverage
+- PASS only if every question is answered.
+
+### B: Data Grounding
+- Every claim must trace to a source.
+
+### C: Skill Compliance
+- Confidence labels required.
+
+### warn-Judge
+Critique the framework.`;
+
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(2);
+        expect(result.judges[0].severity).toBe('fail');
+        expect(result.judges[0].prompt).toContain('You are evaluating a report.');
+        expect(result.judges[0].prompt).toContain('### A: Prompt Coverage');
+        expect(result.judges[0].prompt).toContain('### B: Data Grounding');
+        expect(result.judges[0].prompt).toContain('### C: Skill Compliance');
+        expect(result.judges[0].prompt).not.toContain('### warn-Judge');
+        expect(result.judges[1].severity).toBe('warning');
+        expect(result.judges[1].prompt).toBe('Critique the framework.');
+    });
 });
 
 describe('judgeAllChecks — deterministic', () => {
