@@ -7,3 +7,6 @@ storage/
 # Root-level actor files (created by apify run, not for commit)
 /.actor/
 /.actorignore
+# Workspace artifacts left over from local eval runs
+.eval-marker-*
+tsconfig.tsbuildinfo

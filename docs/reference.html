@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apify Agent Evals &mdash; Reference</title>
+<style>
+:root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-code: #1c2128;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --text-heading: #e6edf3;
+    --accent: #58a6ff;
+    --accent-dim: #1f6feb;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --orange: #f0883e;
+    --sidebar-w: 280px;
+    --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar */
+nav {
+    position: fixed; top: 0; left: 0;
+    width: var(--sidebar-w); height: 100vh;
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 20px 0;
+    z-index: 100;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+nav .logo {
+    padding: 0 20px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+nav .logo h1 { font-size: 16px; color: var(--text-heading); font-weight: 600; }
+nav .logo span { font-size: 12px; color: var(--text-muted); }
+nav a {
+    display: block; padding: 6px 20px;
+    color: var(--text-muted); text-decoration: none;
+    font-size: 13px; transition: all .15s;
+    border-left: 2px solid transparent;
+}
+nav a:hover { color: var(--text); background: rgba(88,166,255,.06); }
+nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(88,166,255,.08); }
+nav .section-label {
+    padding: 12px 20px 4px; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .8px;
+    color: var(--text-muted); font-weight: 600;
+}
+nav a.sub { padding-left: 36px; font-size: 12px; }
+
+/* Main */
+main {
+    margin-left: var(--sidebar-w);
+    max-width: 900px; padding: 32px 48px 80px;
+    flex: 1;
+}
+h2 {
+    font-size: 24px; color: var(--text-heading);
+    margin: 48px 0 16px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+h2:first-of-type { margin-top: 0; }
+h3 { font-size: 18px; color: var(--text-heading); margin: 32px 0 12px; }
+h4 { font-size: 15px; color: var(--accent); margin: 20px 0 8px; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px 24px; }
+li { margin: 4px 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+strong { color: var(--text-heading); }
+em { color: var(--text-muted); font-style: italic; }
+hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+/* Code */
+code {
+    font-family: var(--font-mono); font-size: 13px;
+    background: var(--bg-code); padding: 2px 6px;
+    border-radius: 4px; color: var(--orange);
+}
+pre {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 20px;
+    overflow-x: auto; margin: 0 0 16px;
+    font-family: var(--font-mono); font-size: 13px;
+    line-height: 1.5; color: var(--text);
+    position: relative;
+}
+pre code {
+    background: none; padding: 0; color: inherit;
+}
+pre .lang-label {
+    position: absolute; top: 6px; right: 12px;
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* Tables */
+table {
+    width: 100%; border-collapse: collapse;
+    margin: 0 0 16px; font-size: 14px;
+}
+th {
+    text-align: left; padding: 10px 14px;
+    background: var(--bg-code); color: var(--text-heading);
+    border: 1px solid var(--border); font-weight: 600;
+    font-size: 13px;
+}
+td {
+    padding: 8px 14px; border: 1px solid var(--border);
+    vertical-align: top;
+}
+tr:hover td { background: rgba(88,166,255,.03); }
+
+/* Badges / Tags */
+.badge {
+    display: inline-block; padding: 2px 8px;
+    border-radius: 12px; font-size: 11px;
+    font-weight: 600; letter-spacing: .3px;
+}
+.badge-green { background: rgba(63,185,80,.15); color: var(--green); }
+.badge-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+.badge-red { background: rgba(248,81,73,.15); color: var(--red); }
+.badge-blue { background: rgba(88,166,255,.15); color: var(--accent); }
+.badge-purple { background: rgba(188,140,255,.15); color: var(--purple); }
+
+/* Cards */
+.card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin: 0 0 16px;
+}
+.card h4 { margin-top: 0; }
+.card-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; margin: 0 0 16px;
+}
+
+/* Flow diagram */
+.flow {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin: 12px 0 20px;
+    font-size: 13px;
+}
+.flow .step {
+    background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 14px;
+    color: var(--text-heading); white-space: nowrap;
+}
+.flow .arrow { color: var(--text-muted); font-size: 18px; }
+
+/* Collapsible sections */
+details {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; margin: 0 0 12px;
+}
+details summary {
+    padding: 12px 16px; cursor: pointer;
+    font-weight: 600; color: var(--text-heading);
+    list-style: none; display: flex; align-items: center; gap: 8px;
+    font-size: 14px;
+}
+details summary::before {
+    content: '\25B6'; font-size: 10px; color: var(--text-muted);
+    transition: transform .2s;
+}
+details[open] summary::before { transform: rotate(90deg); }
+details .content { padding: 0 16px 16px; }
+
+/* Audience tabs */
+.tabs {
+    display: flex; gap: 0; margin: 0 0 24px;
+    border-bottom: 1px solid var(--border);
+}
+.tab {
+    padding: 10px 20px; cursor: pointer;
+    font-size: 14px; font-weight: 500;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+    background: none; border-top: none; border-left: none; border-right: none;
+    font-family: inherit;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Search */
+.search-box {
+    padding: 8px 16px; margin: 0 16px 8px;
+}
+.search-box input {
+    width: 100%; padding: 6px 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font-size: 13px; font-family: var(--font-sans);
+    outline: none;
+}
+.search-box input:focus { border-color: var(--accent); }
+.search-box input::placeholder { color: var(--text-muted); }
+
+/* Responsive */
+@media (max-width: 900px) {
+    nav { width: 240px; }
+    main { margin-left: 240px; padding: 24px; }
+    :root { --sidebar-w: 240px; }
+}
+@media (max-width: 700px) {
+    nav { display: none; }
+    main { margin-left: 0; padding: 16px; }
+}
+
+/* Syntax colors in code blocks */
+.kw { color: #ff7b72; }
+.str { color: #a5d6ff; }
+.num { color: #79c0ff; }
+.cmt { color: #8b949e; font-style: italic; }
+.type { color: #d2a8ff; }
+.fn { color: #d2a8ff; }
+.prop { color: #79c0ff; }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+    <div class="logo">
+        <h1>Agent Evals</h1>
+        <span>Reference Documentation</span>
+    </div>
+    <div class="search-box">
+        <input type="text" id="nav-search" placeholder="Search sections..." autocomplete="off">
+    </div>
+
+    <div class="section-label">Overview</div>
+    <a href="#overview">Co je Agent Evals</a>
+    <a href="#architecture">Architektura</a>
+    <a href="#flow">Execution Flow</a>
+
+    <div class="section-label">User Guide</div>
+    <a href="#input">Input konfigurace</a>
+    <a href="#scenarios">Scenario format</a>
+    <a href="#checkpoints">Checkpoint typy</a>
+    <a href="#presets">Init Presets</a>
+    <a href="#agents">Podporovaní agenti</a>
+    <a href="#output">Output</a>
+    <a href="#kv-stores">KV Store &amp; Logs</a>
+    <a href="#examples">Example scen&aacute;&rcaron;e</a>
+
+    <div class="section-label">Developer Guide</div>
+    <a href="#modules">Modul map</a>
+    <a href="#types">TypeScript typy</a>
+    <a href="#judge-system">Judge system</a>
+    <a href="#agent-registry">Agent registry</a>
+    <a href="#trajectory">Trajectory extraction</a>
+    <a href="#otel">OTel instrumentace</a>
+    <a href="#docker">Dockerfile</a>
+    <a href="#tests">Testy</a>
+    <a href="#constants">Konstanty</a>
+</nav>
+
+<main>
+
+<!-- ==================== OVERVIEW ==================== -->
+<h2 id="overview">Co je Agent Evals</h2>
+<p><strong>Agent Evals</strong> je evaluation framework pro AI coding agenty (Claude Code, Codex, OpenCode). Spustí Markdown testovací scénáře, automaticky vyhodnotí výsledky pomocí deterministických kontrol a LLM judgingu, a produkuje strukturované metriky.</p>
+
+<div class="card-grid">
+    <div class="card">
+        <h4>Runner Actor</h4>
+        <p>Spustí jeden scénář s jedním agentem. Parsuje markdown, inicializuje workspace, spouští agenta, vyhodnocuje checkpointy.</p>
+        <span class="badge badge-green">Production</span>
+    </div>
+    <div class="card">
+        <h4>Orchestrator Actor</h4>
+        <p>Orchestruje více scénářů najednou. Plánováno pro Fázi 3.</p>
+        <span class="badge badge-yellow">Planned</span>
+    </div>
+    <div class="card">
+        <h4>Shared Library</h4>
+        <p>Sdílené typy, parsery, agent adaptery, judge logika, metriky, OTel.</p>
+        <span class="badge badge-blue">@apify-evals/shared</span>
+    </div>
+</div>
+
+<h2 id="architecture">Architektura</h2>
+<p>Monorepo s npm workspaces:</p>
+<pre><code>apify-evals/
+├── shared/                  <span class="cmt"># Sdílená knihovna</span>
+│   ├── src/
+│   │   ├── types.ts         <span class="cmt"># Core interfaces</span>
+│   │   ├── scenario-parser.ts
+│   │   ├── judge.ts         <span class="cmt"># Checkpoint evaluace</span>
+│   │   ├── agents/
+│   │   │   ├── run.ts       <span class="cmt"># Agent execution</span>
+│   │   │   ├── registry.ts  <span class="cmt"># CLI definice</span>
+│   │   │   └── claude.ts    <span class="cmt"># LLM judge backend</span>
+│   │   ├── init-presets.ts
+│   │   ├── log-masker.ts
+│   │   ├── otel.ts
+│   │   └── constants.ts
+│   └── __tests__/
+├── actors/
+│   ├── runner/              <span class="cmt"># Hlavní Apify Actor</span>
+│   │   ├── src/main.ts
+│   │   └── .actor/
+│   └── orchestrator/        <span class="cmt"># (empty, planned)</span>
+├── scenarios/               <span class="cmt"># 24 hotových scénářů</span>
+├── examples/                <span class="cmt"># 9 example input JSON</span>
+├── docs/
+└── Dockerfile</code></pre>
+
+<h2 id="flow">Execution Flow</h2>
+<div class="flow">
+    <span class="step">Input (scenario + config)</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Parse scenario</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Init workspace</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Run preset + init script</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Detect plugins</span>
+</div>
+<div class="flow">
+    <span class="step">For each test:</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Spawn agent</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Stream NDJSON events</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Extract trajectory</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Monitor (optional)</span>
+</div>
+<div class="flow">
+    <span class="step">Judge checkpoints</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Compute verdicts</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Retry on fail?</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Push to dataset</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">Flush OTel + logs</span>
+</div>
+
+<p style="margin-top:16px"><strong>Podrobnosti execution flow:</strong></p>
+<ol>
+    <li><strong>Parse scenario</strong> &mdash; <code>parseScenario()</code> extrahuje YAML frontmatter + test bloky</li>
+    <li><strong>Init workspace</strong> &mdash; izolovaný <code>/tmp/eval-workspace-{UUID}</code></li>
+    <li><strong>Init preset</strong> &mdash; nainstaluje nástroje, zapíše MCP config, spustí custom script</li>
+    <li><strong>Plugin auto-detect</strong> &mdash; pokud init script umístil <code>.claude-plugin/plugin.json</code>, přidá <code>--plugin-dir</code></li>
+    <li><strong>Agent run</strong> &mdash; <code>child_process.spawn()</code>, NDJSON stream parsing</li>
+    <li><strong>Trajectory</strong> &mdash; tool calls, soubory, příkazy, MCP tools, error recovery</li>
+    <li><strong>Monitor</strong> &mdash; volitelný follow-up agent call</li>
+    <li><strong>Judge</strong> &mdash; deterministické kontroly + LLM judge</li>
+    <li><strong>Retry</strong> &mdash; na fail: nový workspace, znovu init + agent + judge (max <code>maxRetries</code>)</li>
+    <li><strong>Output</strong> &mdash; <code>Actor.pushData(AgentResult)</code> per test, logs do KV store, OTel trace</li>
+</ol>
+
+<hr>
+
+<!-- ==================== USER GUIDE ==================== -->
+<h2 id="input">Input konfigurace</h2>
+<p>Jediný povinný input je <code>scenario</code>. Vše ostatní má rozumné defaulty.</p>
+
+<table>
+    <thead>
+        <tr><th>Field</th><th>Typ</th><th>Default</th><th>Popis</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><code>scenario</code> <span class="badge badge-red">required</span></td>
+            <td>string (textarea)</td>
+            <td>&mdash;</td>
+            <td>Markdown s YAML frontmatter + <code>## Test</code> / <code>## Checkpoint</code> bloky</td>
+        </tr>
+        <tr>
+            <td><code>agent</code></td>
+            <td>enum</td>
+            <td><code>"claude-code"</code></td>
+            <td><code>"claude-code"</code> | <code>"codex"</code> | <code>"opencode"</code></td>
+        </tr>
+        <tr>
+            <td><code>model</code></td>
+            <td>string</td>
+            <td><code>"claude-sonnet-4-6"</code></td>
+            <td>LLM model override (nullable)</td>
+        </tr>
+        <tr>
+            <td><code>systemPrompt</code></td>
+            <td>string (textarea)</td>
+            <td><em>"You are an AI agent being evaluated..."</em></td>
+            <td>Custom system prompt pro agenta</td>
+        </tr>
+        <tr>
+            <td><code>maxBudgetUsd</code></td>
+            <td>number</td>
+            <td><code>1.00</code></td>
+            <td>Spending cap v USD (0.01&ndash;100). <strong>Soft limit</strong> &mdash; kontrola mezi turny.</td>
+        </tr>
+        <tr>
+            <td><code>maxTurns</code></td>
+            <td>integer</td>
+            <td><code>10</code></td>
+            <td>Max agent turns per test (1&ndash;100). 3 pro jednoduché otázky, 10+ pro multi-step.</td>
+        </tr>
+        <tr>
+            <td><code>maxRetries</code></td>
+            <td>integer</td>
+            <td><code>0</code></td>
+            <td>Kolikrát zopakovat propadlý test (0&ndash;5). Každý retry = čistý workspace.</td>
+        </tr>
+        <tr>
+            <td><code>envVariables</code></td>
+            <td>object (secret)</td>
+            <td><code>null</code></td>
+            <td>API klíče jako JSON. Automaticky maskovány v logech (<code>***KEY_NAME***</code>).</td>
+        </tr>
+        <tr>
+            <td><code>initPreset</code></td>
+            <td>enum</td>
+            <td><code>"none"</code></td>
+            <td>Konfiguruje dostupné nástroje. Viz <a href="#presets">Init Presets</a>.</td>
+        </tr>
+        <tr>
+            <td><code>initBashScript</code></td>
+            <td>string (textarea)</td>
+            <td><code>null</code></td>
+            <td>Custom bash script (timeout 5 min). Běží po presetu v workspace dir.</td>
+        </tr>
+        <tr>
+            <td><code>mcpConfigJson</code></td>
+            <td>object</td>
+            <td><code>null</code></td>
+            <td>MCP server konfigurace. Povinné pro <code>mcp_native</code> a <code>mcpc</code> presety.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2 id="scenarios">Scenario format</h2>
+<p>Scénář je Markdown soubor s YAML frontmatter. Obsahuje jeden nebo více testů, každý s promptem a checkpointem.</p>
+
+<h3>Struktura</h3>
+<pre><code><span class="cmt">---</span>
+<span class="prop">name</span>: scenario-id        <span class="cmt"># required</span>
+<span class="prop">description</span>: <span class="str">"Co testuje"</span>
+<span class="prop">abortOnFailure</span>: <span class="kw">false</span>   <span class="cmt"># stop on first fail</span>
+<span class="cmt">---</span>
+
+<span class="kw">## Test</span>
+Prompt pro agenta (plain text, libovolná délka)
+
+<span class="kw">## Checkpoint</span>
+contains: expected text
+regex: \d{4}
+Plain text = LLM judge prompt
+
+<span class="kw">## Monitor</span>
+<span class="cmt">(Optional)</span> Follow-up question o agentově práci
+
+<span class="cmt">---</span>
+
+<span class="kw">## Test</span>
+Druhý test (odděleno ---)
+
+<span class="kw">## Checkpoint</span>
+contains: something</code></pre>
+
+<h3>YAML frontmatter</h3>
+<table>
+    <thead><tr><th>Pole</th><th>Typ</th><th>Default</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>name</code> <span class="badge badge-red">required</span></td><td>string</td><td>&mdash;</td><td>Identifikátor scénáře</td></tr>
+        <tr><td><code>description</code></td><td>string</td><td><code>""</code></td><td>Co scénář testuje</td></tr>
+        <tr><td><code>abortOnFailure</code></td><td>boolean</td><td><code>false</code></td><td>Zastaví scénář po prvním failu</td></tr>
+    </tbody>
+</table>
+
+<h3>Sekce v test bloku</h3>
+<table>
+    <thead><tr><th>Sekce</th><th>Povinná</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>## Test</code></td><td>Ano</td><td>Prompt poslaný agentovi</td></tr>
+        <tr><td><code>## Checkpoint</code></td><td>Ano</td><td>Evaluační kritéria (viz <a href="#checkpoints">checkpoint typy</a>)</td></tr>
+        <tr><td><code>## Monitor</code></td><td>Ne</td><td>Follow-up otázka &mdash; agent odpovídá na základě své předchozí práce</td></tr>
+        <tr><td><code>## Expected Tools</code></td><td>Ne</td><td><em>Deprecated</em> &mdash; přesunuto do frontmatter</td></tr>
+    </tbody>
+</table>
+
+<h3>Multi-test scénáře</h3>
+<p>Testy se oddělují <code>---</code> (YAML document separator). Separator musí být na vlastním řádku a následovaný <code>## Test</code>.</p>
+
+<h2 id="checkpoints">Checkpoint typy</h2>
+<p>Checkpoint sekce obsahuje N kontrol. <strong>Všechny musí projít</strong> pro overall <code>pass</code>.</p>
+
+<h3>Dva formáty zápisu</h3>
+
+<div class="tabs" data-group="cp-format">
+    <button class="tab active" data-tab="flat">Flat formát</button>
+    <button class="tab" data-tab="subsection">Subsection formát</button>
+</div>
+
+<div class="tab-content active" data-tab="flat" data-group="cp-format">
+<p>Prefixované řádky nahoře, plain text dole (= LLM judge):</p>
+<pre><code>contains: Jupiter
+regex: \b(largest|biggest)\b
+The answer should be scientifically accurate.</code></pre>
+<p><em>Pravidlo: prefix řádky se parsují dokud nenarazí na první non-prefix řádek &rarr; zbytek = LLM judge.</em></p>
+</div>
+
+<div class="tab-content" data-tab="subsection" data-group="cp-format">
+<p>Pojmenované subsekce pro komplexnější kontroly:</p>
+<pre><code><span class="kw">### Checks</span>
+contains: Jupiter
+warn-regex: gas giant
+
+<span class="kw">### Script</span>
+cat /tmp/demo.json | jq -e '.items == 3'
+
+<span class="kw">### Judge</span>
+The answer must be scientifically accurate.
+
+<span class="kw">### Judge (opus)</span>
+Deep analysis of code architecture.
+
+<span class="kw">### warn-Judge (haiku)</span>
+Optional: is error handling present?</code></pre>
+<p>Subsekce: <code>Check</code>/<code>Checks</code>, <code>Script</code>/<code>Scripts</code>, <code>Judge</code>/<code>warn-Judge</code> (case-insensitive). Více <code>### Judge</code> bloků = více nezávislých LLM volání.</p>
+</div>
+
+<h3>Deterministic checks</h3>
+<table>
+    <thead><tr><th>Check</th><th>Syntax</th><th>Jak funguje</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><span class="badge badge-green">contains</span></td>
+            <td><code>contains: text</code></td>
+            <td>Case-insensitive substring match v agent outputu</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-green">regex</span></td>
+            <td><code>regex: \d{4}</code></td>
+            <td>Case-insensitive regex test nad agent outputem</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-green">json-schema</span></td>
+            <td><code>json-schema: {"type":"object",...}</code></td>
+            <td>Ajv validace. Auto-extrahuje JSON z code bloků v outputu.</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-blue">script</span></td>
+            <td><code>script: cmd</code> nebo <code>### Script</code> blok</td>
+            <td>Bash script. Agent output na <strong>stdin</strong>. Exit 0 = pass. Stdout = evidence. Timeout 60s. Vidí workspace soubory.</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-purple">jq</span></td>
+            <td><code>jq: expression</code></td>
+            <td>jq <code>-e</code> nad conversation events (JSON array). Exit 0 = pass. Timeout 30s.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>LLM Judge</h3>
+<table>
+    <thead><tr><th>Syntax</th><th>Model</th><th>Severity</th></tr></thead>
+    <tbody>
+        <tr><td>Plain text (flat format)</td><td>Sonnet (default)</td><td>fail</td></tr>
+        <tr><td><code>### Judge</code></td><td>Sonnet (default)</td><td>fail</td></tr>
+        <tr><td><code>### Judge (opus)</code></td><td>Opus</td><td>fail</td></tr>
+        <tr><td><code>### Judge (haiku)</code></td><td>Haiku</td><td>fail</td></tr>
+        <tr><td><code>### warn-Judge</code></td><td>Sonnet (default)</td><td>warning</td></tr>
+        <tr><td><code>### warn-Judge (haiku)</code></td><td>Haiku</td><td>warning</td></tr>
+    </tbody>
+</table>
+<p>Model aliases: <code>haiku</code> &rarr; <code>claude-haiku-4-5-20251001</code>, <code>sonnet</code> &rarr; <code>claude-sonnet-4-6</code>, <code>opus</code> &rarr; <code>claude-opus-4-6</code>. Nebo plné model ID.</p>
+<p>JSON schema: <code>{verdict: "pass"|"fail"|"unclear", reasoning: "string"}</code>. Retry: max 2 pokusy, exponential backoff. Fallback: <code>unclear</code>.</p>
+
+<h3>Severity prefix</h3>
+<p>Jakýkoli check type lze prefixovat <code>warn-</code> &rarr; fail se změní na <strong>warning</strong> (neblokuje overall pass):</p>
+<pre><code>warn-contains: optional text
+warn-regex: nice-to-have pattern
+warn-jq: [.[] | ...] | length > 0</code></pre>
+
+<h3>Overall verdict logika</h3>
+<pre><code><span class="kw">if</span> (any <span class="str">platform_failure</span>) &rarr; <span class="str">"platform_failure"</span>
+<span class="kw">if</span> (any <span class="str">fail</span>)             &rarr; <span class="str">"fail"</span>
+<span class="kw">if</span> (any <span class="str">warning</span>)          &rarr; <span class="str">"warning"</span>
+<span class="kw">if</span> (any <span class="str">unclear</span>)          &rarr; <span class="str">"unclear"</span>
+<span class="kw">else</span>                       &rarr; <span class="str">"pass"</span></code></pre>
+
+<h3>jq checkpoint &mdash; conversation events</h3>
+<p>jq checkpointy operují nad <strong>conversation events</strong> (JSON array), ne nad agent text outputem. To umožňuje validovat <em>jaké nástroje</em> agent použil:</p>
+<pre><code><span class="cmt"># Agent použil Bash tool</span>
+jq: [.[] | select(.type=="assistant") | .message.content[]?
+     | select(.type=="tool_use" and .name=="Bash")] | length > 0
+
+<span class="cmt"># Agent NEPOUŽIL zakázané tools</span>
+jq: [.[] | select(.type=="assistant") | .message.content[]?
+     | select(.type=="tool_use") | .name
+     | select(test("^Web(Search|Fetch)$"))] | length == 0
+
+<span class="cmt"># Agent spustil konkrétní příkaz</span>
+jq: [.[] | select(.type=="assistant") | .message.content[]?
+     | select(.type=="tool_use" and .name=="Bash")
+     | .input.command? // ""
+     | select(test("apify (actors )?call"))] | length > 0</code></pre>
+
+<h2 id="presets">Init Presets</h2>
+<table>
+    <thead><tr><th>Preset</th><th>Nástroje</th><th>Co dělá</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><code>none</code></td>
+            <td>Built-in only</td>
+            <td>Žádná speciální inicializace</td>
+        </tr>
+        <tr>
+            <td><code>mcp_native</code></td>
+            <td>MCP servers</td>
+            <td>Zapíše <code>mcpConfigJson</code> do <code>.eval-config/mcp-config.json</code>, předá <code>--mcp-config</code> + <code>--strict-mcp-config</code></td>
+        </tr>
+        <tr>
+            <td><code>cli_native</code></td>
+            <td>gh, apify-cli</td>
+            <td>Ověří dostupnost CLI nástrojů v PATH</td>
+        </tr>
+        <tr>
+            <td><code>mcpc</code></td>
+            <td>MCP via mcpc bridge</td>
+            <td>Zkontroluje mcpc, volitelně zapíše MCP config</td>
+        </tr>
+    </tbody>
+</table>
+
+<h4>MCP Config JSON</h4>
+<p>Token placeholders (<code>${APIFY_TOKEN}</code>) se resolví z <code>envVariables</code>:</p>
+<pre><code>{
+  <span class="prop">"mcpServers"</span>: {
+    <span class="prop">"apify"</span>: {
+      <span class="prop">"command"</span>: <span class="str">"npx"</span>,
+      <span class="prop">"args"</span>: [<span class="str">"-y"</span>, <span class="str">"@apify/mcp-server"</span>],
+      <span class="prop">"env"</span>: { <span class="prop">"APIFY_TOKEN"</span>: <span class="str">"${APIFY_TOKEN}"</span> }
+    },
+    <span class="prop">"github"</span>: {
+      <span class="prop">"command"</span>: <span class="str">"npx"</span>,
+      <span class="prop">"args"</span>: [<span class="str">"-y"</span>, <span class="str">"@modelcontextprotocol/server-github"</span>],
+      <span class="prop">"env"</span>: { <span class="prop">"GITHUB_TOKEN"</span>: <span class="str">"${GITHUB_TOKEN}"</span> }
+    }
+  }
+}</code></pre>
+
+<h4>Custom Init Script</h4>
+<p>Běží v workspace dir po presetu. Timeout 5 minut. Typické použití:</p>
+<pre><code><span class="cmt"># Clone plugin a zkopírovat do workspace</span>
+git clone --depth 1 https://github.com/user/plugin.git _plugin
+cp -r _plugin/.claude-plugin .claude-plugin
+cp -r _plugin/skills skills
+rm -rf _plugin
+
+<span class="cmt"># Stáhnout testovací data</span>
+curl -sL https://example.com/data.json > /tmp/test-data.json
+
+<span class="cmt"># Nainstalovat extra nástroje</span>
+npm install -g some-tool</code></pre>
+
+<h4>Plugin auto-detection</h4>
+<p>Pokud init script (nebo custom bash) umístí <code>.claude-plugin/plugin.json</code> do workspace root, runner automaticky přidá <code>--plugin-dir &lt;workspace&gt;</code>. Nemusíte specifikovat nic dalšího.</p>
+
+<h2 id="agents">Podporovaní agenti</h2>
+<table>
+    <thead><tr><th>Agent</th><th>Command</th><th>MCP</th><th>Plugins</th><th>Budget</th><th>Max Turns</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><strong>Claude Code</strong> <span class="badge badge-blue">claude-code</span></td>
+            <td><code>claude -p "..."</code></td>
+            <td><span class="badge badge-green">Yes</span></td>
+            <td><span class="badge badge-green">Yes</span></td>
+            <td><span class="badge badge-green">Yes</span></td>
+            <td><span class="badge badge-green">Yes</span></td>
+        </tr>
+        <tr>
+            <td><strong>Codex CLI</strong> <span class="badge badge-blue">codex</span></td>
+            <td><code>codex exec "..."</code></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+        </tr>
+        <tr>
+            <td><strong>OpenCode</strong> <span class="badge badge-blue">opencode</span></td>
+            <td><code>opencode run "..."</code></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+            <td><span class="badge badge-red">No</span></td>
+        </tr>
+    </tbody>
+</table>
+
+<details>
+    <summary>Claude Code flags detail</summary>
+    <div class="content">
+<pre><code>claude -p <span class="str">"prompt"</span> \
+  --output-format stream-json \
+  --verbose \
+  --include-partial-messages \
+  --dangerously-skip-permissions \
+  --no-session-persistence \
+  --model <span class="str">claude-sonnet-4-6</span> \
+  --max-turns <span class="num">10</span> \
+  --max-budget-usd <span class="num">1.0</span> \
+  --system-prompt <span class="str">"..."</span> \
+  --mcp-config <span class="str">path/to/config.json</span> \
+  --strict-mcp-config \
+  --plugin-dir <span class="str">workspace/</span></code></pre>
+    </div>
+</details>
+<details>
+    <summary>Codex flags detail</summary>
+    <div class="content">
+<pre><code>codex exec <span class="str">"prompt"</span> \
+  --json \
+  --dangerously-bypass-approvals-and-sandbox \
+  --ephemeral \
+  --ignore-user-config \
+  --skip-git-repo-check \
+  --model <span class="str">o4-mini</span></code></pre>
+    <p>Prompt se posílá přes <strong>stdin</strong> (pipe-eof mode).</p>
+    </div>
+</details>
+<details>
+    <summary>OpenCode flags detail</summary>
+    <div class="content">
+<pre><code>opencode run <span class="str">"prompt"</span> \
+  --format json \
+  --dangerously-skip-permissions \
+  --model <span class="str">claude-sonnet-4-6</span></code></pre>
+    </div>
+</details>
+
+<h2 id="output">Output &mdash; AgentResult</h2>
+<p>Každý test produkuje jeden <code>AgentResult</code> objekt v dataset:</p>
+
+<pre><code>{
+  <span class="cmt">// Identifikace</span>
+  <span class="prop">"agent"</span>: <span class="str">"claude-code"</span>,
+  <span class="prop">"model"</span>: <span class="str">"claude-sonnet-4-6"</span>,
+  <span class="prop">"scenarioName"</span>: <span class="str">"smoke-test"</span>,
+  <span class="prop">"testIndex"</span>: <span class="num">0</span>,
+  <span class="prop">"testPrompt"</span>: <span class="str">"What is the capital of France?"</span>,
+  <span class="prop">"checkpoint"</span>: <span class="str">"contains: Paris\nThe answer..."</span>,
+
+  <span class="cmt">// Agent output</span>
+  <span class="prop">"agentOutput"</span>: <span class="str">"The capital of France is Paris..."</span>,
+  <span class="prop">"agentOutputLength"</span>: <span class="num">42</span>,
+  <span class="prop">"monitorOutput"</span>: <span class="kw">null</span>,
+
+  <span class="cmt">// Verdicts</span>
+  <span class="prop">"verdicts"</span>: [
+    { <span class="prop">"checkType"</span>: <span class="str">"contains"</span>, <span class="prop">"verdict"</span>: <span class="str">"pass"</span>, <span class="prop">"evidence"</span>: <span class="str">"Output contains \"Paris\""</span> },
+    { <span class="prop">"checkType"</span>: <span class="str">"llm-judge"</span>, <span class="prop">"verdict"</span>: <span class="str">"pass"</span>, <span class="prop">"evidence"</span>: <span class="str">"..."</span> }
+  ],
+  <span class="prop">"overallVerdict"</span>: <span class="str">"pass"</span>,
+
+  <span class="cmt">// Metriky</span>
+  <span class="prop">"metrics"</span>: { ... },
+  <span class="prop">"efficiency"</span>: { ... },
+  <span class="prop">"trajectory"</span>: { ... },
+  <span class="prop">"judge"</span>: { <span class="prop">"judgeCostUsd"</span>: <span class="num">0.001</span>, <span class="prop">"judgeLatencyMs"</span>: <span class="num">2345</span>, <span class="prop">"judgeTurns"</span>: <span class="num">1</span> },
+
+  <span class="cmt">// Status</span>
+  <span class="prop">"retryAttempts"</span>: <span class="num">0</span>,
+  <span class="prop">"stopReason"</span>: <span class="str">"end_turn"</span>,
+  <span class="prop">"exitCode"</span>: <span class="num">0</span>,
+  <span class="prop">"aborted"</span>: <span class="kw">false</span>,
+  <span class="prop">"abortReason"</span>: <span class="kw">null</span>,
+  <span class="prop">"error"</span>: <span class="kw">null</span>
+}</code></pre>
+
+<details>
+    <summary>RunMetrics</summary>
+    <div class="content">
+<table>
+    <thead><tr><th>Pole</th><th>Typ</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>inputTokens</code></td><td>number</td><td>Input tokeny celkem</td></tr>
+        <tr><td><code>outputTokens</code></td><td>number</td><td>Output tokeny celkem</td></tr>
+        <tr><td><code>cacheReadTokens</code></td><td>number</td><td>Tokeny načtené z cache</td></tr>
+        <tr><td><code>cacheCreationTokens</code></td><td>number</td><td>Tokeny zapsané do cache</td></tr>
+        <tr><td><code>totalCostUsd</code></td><td>number</td><td>Celková cena v USD</td></tr>
+        <tr><td><code>durationMs</code></td><td>number</td><td>Wall-clock čas</td></tr>
+        <tr><td><code>durationApiMs</code></td><td>number</td><td>Kumulativní API čas (může být &gt; wall-clock kvůli paralelním voláním)</td></tr>
+        <tr><td><code>numTurns</code></td><td>number</td><td>Počet agent turns</td></tr>
+        <tr><td><code>modelUsage</code></td><td>object</td><td>Per-model breakdown (tokeny + cost)</td></tr>
+    </tbody>
+</table>
+    </div>
+</details>
+
+<details>
+    <summary>EfficiencyMetrics (derivované)</summary>
+    <div class="content">
+<table>
+    <thead><tr><th>Pole</th><th>Vzorec</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>totalContextTokens</code></td><td>input + cacheRead + cacheCreation</td><td>Reálný kontext poslaný modelu</td></tr>
+        <tr><td><code>tokensPerTurn</code></td><td>output / turns</td><td>Průměrně generovaných tokenů na turn</td></tr>
+        <tr><td><code>costPerTurn</code></td><td>cost / turns</td><td>Průměrná cena jednoho turnu</td></tr>
+        <tr><td><code>cacheHitRate</code></td><td>cacheRead / totalContext</td><td>0&ndash;1, podíl cache hitů</td></tr>
+        <tr><td><code>contextOutputRatio</code></td><td>totalContext / output</td><td>Kolik agent čte vs generuje</td></tr>
+        <tr><td><code>apiDurationRatio</code></td><td>apiMs / wallMs</td><td>Může být &gt;1 (paralelní API calls)</td></tr>
+        <tr><td><code>avgTurnDurationMs</code></td><td>wallMs / turns</td><td>Průměrný čas turnu</td></tr>
+        <tr><td><code>toolExecutionMs</code></td><td>wallMs - apiMs</td><td>Čas strávený v nástrojích (ne LLM)</td></tr>
+        <tr><td><code>planningTurns</code></td><td>&mdash;</td><td>Turny jen s textem (žádné tool calls)</td></tr>
+        <tr><td><code>executionTurns</code></td><td>&mdash;</td><td>Turny s alespoň jedním tool callem</td></tr>
+    </tbody>
+</table>
+    </div>
+</details>
+
+<details>
+    <summary>TrajectoryMetrics</summary>
+    <div class="content">
+<table>
+    <thead><tr><th>Pole</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>toolCallCount</code></td><td>Celkový počet tool calls</td></tr>
+        <tr><td><code>toolCallSequence</code></td><td>Sekvence názvů nástrojů <code>["Bash", "Read", "Bash"]</code></td></tr>
+        <tr><td><code>uniqueToolsUsed</code></td><td>Unikátní nástroje <code>["Bash", "Read"]</code></td></tr>
+        <tr><td><code>toolCallsPerTurn</code></td><td>Průměr tool calls na turn</td></tr>
+        <tr><td><code>perTurnTokens</code></td><td>Per-turn breakdown tokenů</td></tr>
+        <tr><td><code>perTurnToolCalls</code></td><td>Per-turn breakdown tool calls</td></tr>
+        <tr><td><code>toolCallDetails</code></td><td>Detaily (tool, turn, truncated input args)</td></tr>
+        <tr><td><code>errorRecoveryCount</code></td><td>Kolikrát agent zareagoval na error</td></tr>
+        <tr><td><code>filesCreated</code></td><td>Soubory vytvořené agentem</td></tr>
+        <tr><td><code>filesModified</code></td><td>Soubory modifikované agentem</td></tr>
+        <tr><td><code>commandsExecuted</code></td><td>Bash příkazy spuštěné agentem</td></tr>
+        <tr><td><code>mcpToolsUsed</code></td><td>MCP nástroje (prefix <code>mcp__</code>)</td></tr>
+    </tbody>
+</table>
+    </div>
+</details>
+
+<h2 id="kv-stores">KV Store &amp; Logs</h2>
+<table>
+    <thead><tr><th>KV Key</th><th>Content Type</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>CONVERSATION-LOG</code></td><td>text/plain</td><td>NDJSON raw agent events, secrets masked</td></tr>
+        <tr><td><code>JUDGE-LOG</code></td><td>text/plain</td><td>NDJSON checkpoint eval results + latences</td></tr>
+        <tr><td><code>OTEL-TRACE</code></td><td>application/json</td><td>OpenTelemetry trace (OTLP JSON)</td></tr>
+        <tr><td><code>LIVE-AGENT-LOG</code></td><td>text/plain</td><td>Live-updating agent output (during run)</td></tr>
+        <tr><td><code>LIVE-JUDGE-LOG</code></td><td>text/plain</td><td>Live-updating judge output (during run)</td></tr>
+    </tbody>
+</table>
+
+<h2 id="examples">Example scen&aacute;&rcaron;e</h2>
+<p>24 hotových scénářů v <code>scenarios/</code>:</p>
+<table>
+    <thead><tr><th>Scénář</th><th>Testů</th><th>Checkpoints</th><th>Popis</th></tr></thead>
+    <tbody>
+        <tr><td><code>smoke-test</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>Jednoduchá otázka + LLM judge</td></tr>
+        <tr><td><code>multi-check-demo</code></td><td>2</td><td><span class="badge badge-green">contains</span> <span class="badge badge-green">regex</span> <span class="badge badge-green">json-schema</span> <span class="badge badge-blue">script</span> <span class="badge badge-purple">llm</span></td><td>Všechny check typy najednou</td></tr>
+        <tr><td><code>checkpoint-syntax-demo</code></td><td>3</td><td><span class="badge badge-green">contains</span> <span class="badge badge-green">regex</span> <span class="badge badge-green">json-schema</span> <span class="badge badge-blue">script</span> <span class="badge badge-purple">jq</span> <span class="badge badge-purple">llm</span></td><td>Ukázka veškeré checkpoint syntaxe vč. warn-* a model overrides</td></tr>
+        <tr><td><code>jq-tool-checks</code></td><td>2</td><td><span class="badge badge-green">contains</span> <span class="badge badge-purple">jq</span> <span class="badge badge-purple">llm</span></td><td>jq validace tool usage a trajectory</td></tr>
+        <tr><td><code>script-validation</code></td><td>1</td><td><span class="badge badge-green">json-schema</span> <span class="badge badge-blue">script</span> <span class="badge badge-purple">llm</span></td><td>Komplexní script checkpoint</td></tr>
+        <tr><td><code>trajectory-test</code></td><td>2</td><td><span class="badge badge-green">contains</span> <span class="badge badge-blue">script</span></td><td>Multi-file operace, trajectory capture</td></tr>
+        <tr><td><code>skill-injection</code></td><td>1</td><td><span class="badge badge-blue">script</span> <span class="badge badge-purple">llm</span></td><td>CLAUDE.md injection do workspace</td></tr>
+        <tr><td><code>security-isolation</code></td><td>2</td><td><span class="badge badge-blue">script</span> <span class="badge badge-purple">llm</span></td><td>Agent nemůže modifikovat runner soubory</td></tr>
+        <tr><td><code>ai-nondeterministic</code></td><td>2</td><td><span class="badge badge-purple">llm</span></td><td>Nedeterministické úlohy</td></tr>
+        <tr><td><code>us1-ai-judge</code></td><td>2</td><td><span class="badge badge-purple">llm</span></td><td>Nuancované LLM hodnocení</td></tr>
+        <tr><td><code>us1-borderline-judge</code></td><td>2</td><td><span class="badge badge-purple">llm</span></td><td>Hraniční checkpointy testující přesnost judge</td></tr>
+        <tr><td><code>us1-complex-tool-use</code></td><td>2</td><td><span class="badge badge-green">contains</span> <span class="badge badge-purple">llm</span></td><td>Multi-tool operace</td></tr>
+        <tr><td><code>us1-agent-fails</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>Agent nemůže splnit úkol &mdash; judge musí detekovat</td></tr>
+        <tr><td><code>us1-partial-answer</code></td><td>2</td><td><span class="badge badge-purple">llm</span></td><td>Částečně správná odpověď</td></tr>
+        <tr><td><code>us5-multi-step</code></td><td>2</td><td><span class="badge badge-green">contains</span></td><td>Multi-step s abortOnFailure</td></tr>
+        <tr><td><code>us5-dependent-steps</code></td><td>3</td><td><span class="badge badge-green">regex</span> <span class="badge badge-purple">llm</span></td><td>Závislé kroky (soubory z předchozího)</td></tr>
+        <tr><td><code>us5-abort-on-failure</code></td><td>2</td><td><span class="badge badge-purple">llm</span> <span class="badge badge-green">contains</span></td><td>Test 1 failne, test 2 se nesmí spustit</td></tr>
+        <tr><td><code>us6-env-vars</code></td><td>1</td><td><span class="badge badge-green">contains</span></td><td>Injection + maskování env vars</td></tr>
+        <tr><td><code>us6-multi-secret</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>Více secrets + error messages</td></tr>
+        <tr><td><code>us7-budget-abort</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>Budget abort s nízkým limitem</td></tr>
+        <tr><td><code>us7-actual-abort</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>Extrémně nízký budget = force abort</td></tr>
+        <tr><td><code>mcpc-preset-test</code></td><td>1</td><td><span class="badge badge-purple">llm</span></td><td>mcpc preset s MCP serverem</td></tr>
+        <tr><td><code>actor-dev/cheerio-scraper</code></td><td>2</td><td><span class="badge badge-blue">script</span> <span class="badge badge-purple">llm</span></td><td>Full Actor creation + local run</td></tr>
+    </tbody>
+</table>
+
+<hr>
+
+<!-- ==================== DEVELOPER GUIDE ==================== -->
+<h2 id="modules">Modul map</h2>
+<p>Exporty z <code>@apify-evals/shared</code> (<code>shared/src/index.ts</code>):</p>
+<table>
+    <thead><tr><th>Modul</th><th>Soubor</th><th>Klíčové exporty</th></tr></thead>
+    <tbody>
+        <tr><td>Types</td><td><code>types.ts</code></td><td><code>AgentResult</code>, <code>RunMetrics</code>, <code>EfficiencyMetrics</code>, <code>TrajectoryMetrics</code>, <code>CheckVerdict</code>, <code>VerdictValue</code>, <code>CheckType</code>, <code>AgentType</code></td></tr>
+        <tr><td>Scenario Parser</td><td><code>scenario-parser.ts</code></td><td><code>parseScenario()</code>, <code>ScenarioParseError</code></td></tr>
+        <tr><td>Judge</td><td><code>judge.ts</code></td><td><code>judgeAllChecks()</code>, <code>parseCheckpointSection()</code></td></tr>
+        <tr><td>Agent Run</td><td><code>agents/run.ts</code></td><td><code>runAgent()</code></td></tr>
+        <tr><td>Agent Registry</td><td><code>agents/registry.ts</code></td><td><code>AGENT_REGISTRY</code>, <code>buildAgentArgs()</code>, <code>getAgentDef()</code></td></tr>
+        <tr><td>LLM Judge</td><td><code>agents/claude.ts</code></td><td><code>judgeLlm()</code></td></tr>
+        <tr><td>Init Presets</td><td><code>init-presets.ts</code></td><td><code>runInitPreset()</code></td></tr>
+        <tr><td>Log Masker</td><td><code>log-masker.ts</code></td><td><code>maskSecrets()</code></td></tr>
+        <tr><td>Metrics</td><td><code>metrics.ts</code></td><td><code>formatCost()</code>, <code>formatDuration()</code></td></tr>
+        <tr><td>OTel</td><td><code>otel.ts</code></td><td><code>initOtel()</code>, <code>flushOtel()</code>, <code>start*Span()</code>, <code>end*Span()</code></td></tr>
+        <tr><td>OTel Exporter</td><td><code>otel-exporter.ts</code></td><td><code>BufferSpanExporter</code></td></tr>
+        <tr><td>Constants</td><td><code>constants.ts</code></td><td><code>JUDGE_MODEL</code>, <code>SCRIPT_TIMEOUT_MS</code>, ...</td></tr>
+    </tbody>
+</table>
+
+<h2 id="types">TypeScript typy</h2>
+
+<details>
+    <summary>AgentResult (kompletní interface)</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">AgentResult</span> {
+    agent: <span class="type">string</span>;              <span class="cmt">// 'claude-code' | 'codex' | 'opencode'</span>
+    model: <span class="type">string</span>;
+    scenarioName: <span class="type">string</span>;
+    testIndex: <span class="type">number</span>;
+    testPrompt: <span class="type">string</span>;
+    checkpoint: <span class="type">string</span>;         <span class="cmt">// raw checkpoint markdown</span>
+    agentOutput: <span class="type">string</span>;        <span class="cmt">// raw agent text response</span>
+    agentOutputLength: <span class="type">number</span>;
+    monitorOutput: <span class="type">string</span> | <span class="kw">null</span>;
+    verdicts: <span class="type">CheckVerdict</span>[];
+    overallVerdict: <span class="type">VerdictValue</span>;
+    metrics: <span class="type">RunMetrics</span>;
+    efficiency: <span class="type">EfficiencyMetrics</span>;
+    trajectory: <span class="type">TrajectoryMetrics</span>;
+    judge: <span class="type">JudgeMetrics</span>;
+    retryAttempts: <span class="type">number</span>;
+    stopReason: <span class="type">string</span>;         <span class="cmt">// 'end_turn' | 'max_turns' | 'budget_exceeded' | 'error'</span>
+    exitCode: <span class="type">number</span> | <span class="kw">null</span>;
+    aborted: <span class="type">boolean</span>;
+    abortReason: <span class="type">string</span> | <span class="kw">null</span>;
+    error: <span class="type">string</span> | <span class="kw">null</span>;
+}</code></pre>
+    </div>
+</details>
+
+<details>
+    <summary>VerdictValue &amp; CheckType</summary>
+    <div class="content">
+<pre><code><span class="kw">type</span> <span class="type">VerdictValue</span> = <span class="str">'pass'</span> | <span class="str">'fail'</span> | <span class="str">'warning'</span> | <span class="str">'unclear'</span> | <span class="str">'platform_failure'</span>;
+
+<span class="kw">type</span> <span class="type">CheckType</span> = <span class="str">'contains'</span> | <span class="str">'regex'</span> | <span class="str">'json-schema'</span> | <span class="str">'script'</span> | <span class="str">'jq'</span> | <span class="str">'llm-judge'</span> | <span class="str">'error'</span>;
+
+<span class="kw">type</span> <span class="type">AgentType</span> = <span class="str">'claude-code'</span> | <span class="str">'codex'</span> | <span class="str">'opencode'</span>;</code></pre>
+    </div>
+</details>
+
+<details>
+    <summary>CheckVerdict</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">CheckVerdict</span> {
+    checkType: <span class="type">CheckType</span>;
+    checkValue: <span class="type">string</span>;
+    verdict: <span class="type">VerdictValue</span>;
+    evidence: <span class="type">string</span>;
+    evalCritique?: <span class="type">string</span>;   <span class="cmt">// LLM judge meta-critique</span>
+}</code></pre>
+    </div>
+</details>
+
+<details>
+    <summary>ScenarioMeta &amp; TestCase</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">ScenarioMeta</span> {
+    name: <span class="type">string</span>;
+    description: <span class="type">string</span>;
+    abortOnFailure: <span class="type">boolean</span>;
+}
+
+<span class="kw">interface</span> <span class="type">TestCase</span> {
+    test: <span class="type">string</span>;            <span class="cmt">// prompt</span>
+    checkpoint: <span class="type">string</span>;      <span class="cmt">// eval criteria</span>
+    monitor: <span class="type">string</span> | <span class="kw">null</span>; <span class="cmt">// follow-up question</span>
+    expectedToolCalls: <span class="type">ExpectedToolCall</span>[];
+}
+
+<span class="kw">interface</span> <span class="type">ParsedScenario</span> {
+    meta: <span class="type">ScenarioMeta</span>;
+    tests: <span class="type">TestCase</span>[];
+    parseWarnings?: <span class="type">string</span>[];
+}</code></pre>
+    </div>
+</details>
+
+<details>
+    <summary>AgentEvent (union type)</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">AgentEvent</span> {
+    type: <span class="type">string</span>;
+    subtype?: <span class="type">string</span>;
+
+    <span class="cmt">// Claude: assistant event</span>
+    message?: {
+        model: <span class="type">string</span>;
+        content: <span class="type">Array</span>&lt;{
+            type: <span class="type">string</span>;
+            text?: <span class="type">string</span>;
+            name?: <span class="type">string</span>;     <span class="cmt">// tool name</span>
+            input?: <span class="type">unknown</span>;  <span class="cmt">// tool args</span>
+        }&gt;;
+        usage: { input_tokens, output_tokens, cache_read_input_tokens?, cache_creation_input_tokens? };
+    };
+
+    <span class="cmt">// Claude: result event</span>
+    is_error?: <span class="type">boolean</span>;
+    total_cost_usd?: <span class="type">number</span>;
+    num_turns?: <span class="type">number</span>;
+    duration_ms?: <span class="type">number</span>;
+    structured_output?: <span class="type">Record</span>&lt;<span class="type">string</span>, <span class="type">unknown</span>&gt;;
+    modelUsage?: <span class="type">Record</span>&lt;<span class="type">string</span>, <span class="type">ModelUsage</span>&gt;;
+
+    <span class="cmt">// Codex: item events</span>
+    item?: { type?, text?, command?, exit_code?, tool?, changes? };
+
+    <span class="cmt">// OpenCode: part events</span>
+    part?: { type?, text?, tool?, cost?, tokens?, state?, time? };
+}</code></pre>
+    </div>
+</details>
+
+<h2 id="judge-system">Judge system</h2>
+
+<h3>Pipeline</h3>
+<div class="flow">
+    <span class="step">parseCheckpointSection()</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">deterministic checks</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">LLM judge calls</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step">computeOverall()</span>
+</div>
+
+<h4>parseCheckpointSection(checkpoint) &rarr; ParsedCheckpoint</h4>
+<pre><code><span class="kw">interface</span> <span class="type">ParsedCheckpoint</span> {
+    checks: <span class="type">CheckpointSpec</span>[];  <span class="cmt">// deterministic checks</span>
+    judges: <span class="type">JudgeSpec</span>[];        <span class="cmt">// LLM judge prompts</span>
+}
+
+<span class="kw">interface</span> <span class="type">CheckpointSpec</span> {
+    type: <span class="type">CheckType</span>;
+    value: <span class="type">string</span>;
+    severity: <span class="str">'fail'</span> | <span class="str">'warning'</span>;
+}
+
+<span class="kw">interface</span> <span class="type">JudgeSpec</span> {
+    prompt: <span class="type">string</span>;
+    severity: <span class="str">'fail'</span> | <span class="str">'warning'</span>;
+    model?: <span class="type">string</span>;  <span class="cmt">// resolved from alias</span>
+}</code></pre>
+
+<h4>judgeAllChecks(agentOutput, checkpoint, options?)</h4>
+<ol>
+    <li>Detekuje platform failures (memory limit exceeded)</li>
+    <li>Spustí deterministické kontroly (contains, regex, json-schema, script, jq)</li>
+    <li>Zapíše <code>eval-checkpoint.json</code> a <code>eval-check-results.json</code> do workspace</li>
+    <li>Pro každý judge: enriched output = agent text + workspace files + conversation log &rarr; <code>judgeLlm()</code></li>
+    <li>Vrátí <code>{ verdicts, overallVerdict }</code></li>
+</ol>
+
+<h4>LLM Judge backend (agents/claude.ts)</h4>
+<p><code>judgeLlm()</code> spouští Claude CLI jako subprocess:</p>
+<pre><code>claude -p <span class="str">"{prompt}"</span> \
+  --output-format stream-json \
+  --verbose \
+  --include-partial-messages \
+  --json-schema <span class="str">'{"verdict":"pass|fail|unclear","reasoning":"string"}'</span> \
+  --model <span class="str">claude-sonnet-4-6</span></code></pre>
+<p>Timeout: 5 min. Retry: max 2 pokusy s exponential backoff (1s, 2s). Fallback: <code>null</code> &rarr; verdict <code>unclear</code>.</p>
+
+<h2 id="agent-registry">Agent registry</h2>
+<pre><code><span class="kw">interface</span> <span class="type">AgentDef</span> {
+    command: <span class="type">string</span>;             <span class="cmt">// 'claude' | 'codex' | 'opencode'</span>
+    subcommand: <span class="type">string</span> | <span class="kw">null</span>;  <span class="cmt">// null | 'exec' | 'run'</span>
+    promptFlag: <span class="type">string</span> | <span class="kw">null</span>;  <span class="cmt">// '-p' | null (positional)</span>
+    systemPromptFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    outputFlags: <span class="type">string</span>[];
+    permissionFlags: <span class="type">string</span>[];
+    sessionFlags: <span class="type">string</span>[];
+    modelFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    maxTurnsFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    budgetFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    mcpConfigFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    mcpStrictFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    pluginDirFlag: <span class="type">string</span> | <span class="kw">null</span>;
+    outputFormat: <span class="str">'ndjson'</span> | <span class="str">'json'</span> | <span class="str">'text'</span>;
+    stdinMode: <span class="str">'ignore'</span> | <span class="str">'pipe-eof'</span>;
+}</code></pre>
+<p><code>buildAgentArgs(def, opts)</code> sestaví CLI argumenty z registru + runtime options. Přidává model, maxTurns, budget, MCP config, plugin dirs.</p>
+
+<h2 id="trajectory">Trajectory extraction</h2>
+<p>Extrakce z NDJSON event streamu v <code>agents/run.ts</code>:</p>
+<table>
+    <thead><tr><th>Data</th><th>Zdroj</th><th>Detekce</th></tr></thead>
+    <tbody>
+        <tr><td>Tool calls</td><td><code>tool_use</code> content blocks</td><td>Název + truncated input</td></tr>
+        <tr><td>Files created</td><td><code>Write</code> tool calls + Bash regex</td><td><code>&gt;</code>, <code>&gt;&gt;</code>, <code>tee</code>, <code>cp</code>, <code>mv</code></td></tr>
+        <tr><td>Files modified</td><td><code>Edit</code> tool calls</td><td>&mdash;</td></tr>
+        <tr><td>Commands</td><td><code>Bash</code> tool calls</td><td>Raw command string (max 200 chars)</td></tr>
+        <tr><td>MCP tools</td><td>Tool calls s <code>mcp__</code> prefix</td><td>&mdash;</td></tr>
+        <tr><td>Error recovery</td><td><code>tool_use</code> po <code>tool_result</code> s <code>is_error</code></td><td>Inkrementace counteru</td></tr>
+        <tr><td>Planning vs execution</td><td>Turny bez/s tool calls</td><td>&mdash;</td></tr>
+    </tbody>
+</table>
+
+<h2 id="otel">OTel instrumentace</h2>
+<h3>Span hierarchie</h3>
+<pre><code>scenario_run
+├── gen_ai.workflow.name, gen_ai.provider.name, gen_ai.request.model
+├── test_0
+│   ├── invoke_agent
+│   │   <span class="cmt">attributes: inputTokens, outputTokens, cacheTokens, numTurns, cost, duration</span>
+│   │   <span class="cmt">events: tool_call (name, turn)</span>
+│   └── judge_evaluation
+│       <span class="cmt">attributes: checkCount, overallVerdict, latencyMs</span>
+│       <span class="cmt">events: check_verdict (checkType, verdict, confidence, evidence)</span>
+└── test_1
+    └── ...</code></pre>
+
+<p><strong>Export:</strong> OTLP JSON do KV store (<code>OTEL-TRACE</code>). Kompatibilní s AgentPrism, Jaeger, Langfuse OTLP endpoint.</p>
+<p><strong>Implementace:</strong> <code>BufferSpanExporter</code> (in-memory, bez serveru) &rarr; <code>NodeTracerProvider</code> &rarr; service name <code>"apify-evals-runner"</code>.</p>
+
+<h2 id="docker">Dockerfile</h2>
+<h3>Multi-stage build</h3>
+<table>
+    <thead><tr><th>Stage</th><th>Base</th><th>Co instaluje</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><strong>Builder</strong></td>
+            <td><code>apify/actor-node:24</code></td>
+            <td>npm workspaces, TypeScript compile &rarr; <code>dist/</code></td>
+        </tr>
+        <tr>
+            <td><strong>Runtime</strong></td>
+            <td><code>apify/actor-node:24</code></td>
+            <td>
+                System: curl, bash, git, jq, yq, python3, zip, unzip<br>
+                Agents: Claude Code, Codex, OpenCode, Apify CLI<br>
+                Compiled runner + shared
+            </td>
+        </tr>
+    </tbody>
+</table>
+<p><strong>Security:</strong> Runner code owned by root (read-only). Agent workspace v <code>/tmp/eval-workspace-*</code> (writable).</p>
+<p><strong>Deploy:</strong> <code>apify push --dir actors/runner</code> (<code>actor.json</code> má <code>dockerContextDir: "../../.."</code>)</p>
+
+<h2 id="tests">Testy</h2>
+<pre><code><span class="cmt"># Unit testy</span>
+cd shared && npx vitest run
+
+<span class="cmt"># Integrační testy (pomalé ~2min, spustí reálného agenta)</span>
+cd shared && npx vitest run src/__tests__/integration*</code></pre>
+
+<table>
+    <thead><tr><th>Soubor</th><th>Typ</th><th>Testuje</th></tr></thead>
+    <tbody>
+        <tr><td><code>scenario-parser.test.ts</code></td><td>Unit</td><td>Markdown parsing, edge cases, error handling</td></tr>
+        <tr><td><code>judge.test.ts</code></td><td>Unit</td><td>Checkpoint parsing, deterministic checks</td></tr>
+        <tr><td><code>judge-mode.test.ts</code></td><td>Unit</td><td>Judge model overrides, severity</td></tr>
+        <tr><td><code>metrics.test.ts</code></td><td>Unit</td><td>Cost/duration formatting</td></tr>
+        <tr><td><code>log-masker.test.ts</code></td><td>Unit</td><td>Secret masking</td></tr>
+        <tr><td><code>init-presets.test.ts</code></td><td>Unit</td><td>Preset initialization</td></tr>
+        <tr><td><code>agent-parsers.test.ts</code></td><td>Unit</td><td>Agent NDJSON event parsing</td></tr>
+        <tr><td><code>scenario-files.test.ts</code></td><td>Validation</td><td>Parsuje všech 24 scénářů</td></tr>
+        <tr><td><code>example-inputs.test.ts</code></td><td>Validation</td><td>Validuje example JSON vstupy</td></tr>
+        <tr><td><code>integration*.test.ts</code></td><td>Integration</td><td>Reálný agent + judging</td></tr>
+    </tbody>
+</table>
+
+<h2 id="constants">Konstanty</h2>
+<pre><code><span class="kw">export const</span> JUDGE_MODEL = <span class="str">'claude-sonnet-4-6'</span>;
+<span class="kw">export const</span> JUDGE_MODEL_MAP = {
+    haiku: <span class="str">'claude-haiku-4-5-20251001'</span>,
+    sonnet: <span class="str">'claude-sonnet-4-6'</span>,
+    opus: <span class="str">'claude-opus-4-6'</span>,
+};
+<span class="kw">export const</span> SCRIPT_TIMEOUT_MS = <span class="num">60_000</span>;       <span class="cmt">// script checkpoint timeout</span>
+<span class="kw">export const</span> INIT_SCRIPT_TIMEOUT_MS = <span class="num">300_000</span>; <span class="cmt">// init bash script timeout</span>
+<span class="kw">export const</span> JQ_TIMEOUT_MS = <span class="num">30_000</span>;           <span class="cmt">// jq checkpoint timeout</span></code></pre>
+
+</main>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tabs').forEach(tabGroup => {
+    const group = tabGroup.dataset.group;
+    tabGroup.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+            tabGroup.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.querySelectorAll(`.tab-content[data-group="${group}"]`).forEach(tc => {
+                tc.classList.toggle('active', tc.dataset.tab === targetTab);
+            });
+        });
+    });
+});
+
+// Active nav link on scroll
+const sections = document.querySelectorAll('h2[id], h3[id]');
+const navLinks = document.querySelectorAll('nav a[href^="#"]');
+
+const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const id = entry.target.id;
+            navLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${id}`);
+            });
+        }
+    });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+sections.forEach(section => observer.observe(section));
+
+// Nav search
+const searchInput = document.getElementById('nav-search');
+searchInput.addEventListener('input', () => {
+    const query = searchInput.value.toLowerCase();
+    navLinks.forEach(link => {
+        const text = link.textContent.toLowerCase();
+        link.style.display = query && !text.includes(query) ? 'none' : 'block';
+    });
+    document.querySelectorAll('.section-label').forEach(label => {
+        if (!query) { label.style.display = 'block'; return; }
+        let next = label.nextElementSibling;
+        let hasVisible = false;
+        while (next && !next.classList.contains('section-label')) {
+            if (next.style.display !== 'none') hasVisible = true;
+            next = next.nextElementSibling;
+        }
+        label.style.display = hasVisible ? 'block' : 'none';
+    });
+});
+</script>
+</body>
+</html>
