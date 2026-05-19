@@ -250,6 +250,42 @@ Critique the framework.`;
         expect(result.judges[1].severity).toBe('warning');
         expect(result.judges[1].prompt).toBe('Critique the framework.');
     });
+
+    it('parses ### eval-Judge with eval severity', () => {
+        const checkpoint = `
+### eval-Judge
+Are these checks rigorous enough to catch a subtly wrong answer?`;
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].severity).toBe('eval');
+        expect(result.judges[0].model).toBeUndefined();
+        expect(result.judges[0].prompt).toContain('rigorous enough');
+    });
+
+    it('parses ### eval-Judge (opus) combining eval severity and model', () => {
+        const checkpoint = `### eval-Judge (opus)
+Critique the eval framework.`;
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(1);
+        expect(result.judges[0].severity).toBe('eval');
+        expect(result.judges[0].model).toBe('claude-opus-4-6');
+    });
+
+    it('parses mixed Judge / warn-Judge / eval-Judge in one checkpoint', () => {
+        const checkpoint = `### Judge
+A.
+
+### warn-Judge
+B.
+
+### eval-Judge
+C.`;
+        const result = parseCheckpointSection(checkpoint);
+        expect(result.judges).toHaveLength(3);
+        expect(result.judges[0].severity).toBe('fail');
+        expect(result.judges[1].severity).toBe('warning');
+        expect(result.judges[2].severity).toBe('eval');
+    });
 });
 
 describe('judgeAllChecks — deterministic', () => {
@@ -375,6 +411,39 @@ fi`;
         const r = await judgeAllChecks('data', 'script: sleep 10', { scriptTimeoutMs: 100 });
         expect(r.overallVerdict).toBe('fail');
         expect(r.verdicts[0].evidence).toContain('timed out');
+    });
+});
+
+describe('judgeAllChecks — warn- severity propagation', () => {
+    it('warn-contains: mismatch produces warning verdict, not fail', async () => {
+        const r = await judgeAllChecks('hello world', 'warn-contains: Jupiter');
+        expect(r.verdicts).toHaveLength(1);
+        expect(r.verdicts[0].verdict).toBe('warning');
+        expect(r.overallVerdict).toBe('warning');
+    });
+
+    it('warn-regex: mismatch produces warning verdict, not fail', async () => {
+        const r = await judgeAllChecks('hello', 'warn-regex: ^Jupiter$');
+        expect(r.verdicts[0].verdict).toBe('warning');
+        expect(r.overallVerdict).toBe('warning');
+    });
+
+    it('warn-script: failure produces warning verdict, not fail', async () => {
+        const r = await judgeAllChecks('data', 'warn-script: exit 1');
+        expect(r.verdicts[0].verdict).toBe('warning');
+        expect(r.overallVerdict).toBe('warning');
+    });
+
+    it('mixed warn- and hard check: hard fail dominates over warning', async () => {
+        const r = await judgeAllChecks('hello', 'contains: missing\nwarn-contains: also-missing');
+        expect(r.overallVerdict).toBe('fail');
+        expect(r.verdicts[0].verdict).toBe('fail');
+        expect(r.verdicts[1].verdict).toBe('warning');
+    });
+
+    it('all warn- checks fail → overall warning, not fail', async () => {
+        const r = await judgeAllChecks('hello', 'warn-contains: a\nwarn-contains: b');
+        expect(r.overallVerdict).toBe('warning');
     });
 });
 

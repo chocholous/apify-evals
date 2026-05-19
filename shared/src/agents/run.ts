@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, HungWarning } from '../types.js';
+import { HUNG_TURN_THRESHOLD_MS, HUNG_TURN_CHECK_INTERVAL_MS } from '../constants.js';
 import { getAgentDef, buildAgentArgs } from './registry.js';
 
 export interface AgentRunOptions {
@@ -555,6 +556,17 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         }
 
         let aborted = false;
+        let resolved = false;
+        let postResultSigterm: NodeJS.Timeout | null = null;
+        let postResultSigkill: NodeJS.Timeout | null = null;
+        let postResultForceResolve: NodeJS.Timeout | null = null;
+        // Thresholds (ms after `result` event arrives) for graceful subprocess teardown.
+        // Healthy subprocess exits within ~2s of result event; >30s means it's hung
+        // (commonly: open bg Bash, stuck on stdin, or pipe-wait). Force-kill + force-resolve
+        // ensures the runner can proceed to checks/judge regardless of subprocess state.
+        const POST_RESULT_SIGTERM_MS = 30_000;
+        const POST_RESULT_SIGKILL_MS = 60_000;
+        const POST_RESULT_FORCE_RESOLVE_MS = 65_000;
 
         if (options.abortSignal) {
             options.abortSignal.addEventListener('abort', () => {
@@ -569,18 +581,40 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         const events: AgentEvent[] = [];
         const hungWarnings: HungWarning[] = [];
         let lastEventTime = Date.now();
-        const HUNG_THRESHOLD_MS = 300_000;
+        // Tool-call-aware silence detection. We do NOT count silence while a tool is
+        // running on the agent's behalf (apify run, npm install, etc. can legitimately
+        // take minutes). We only flag silence while we're waiting on the LLM.
+        let awaitingToolResult = false;
+        let hangEpisodeActive = false;
         const hungTimer = setInterval(() => {
+            if (awaitingToolResult) {
+                hangEpisodeActive = false;
+                return;
+            }
             const silence = Date.now() - lastEventTime;
-            if (silence >= HUNG_THRESHOLD_MS) {
+            if (silence < HUNG_TURN_THRESHOLD_MS) {
+                hangEpisodeActive = false;
+                return;
+            }
+            if (!hangEpisodeActive) {
                 hungWarnings.push({
                     elapsedMs: Date.now() - startTime,
                     silenceSecs: Math.round(silence / 1000),
                 });
+                hangEpisodeActive = true;
+            } else {
+                // Same hang episode — refresh the silenceSecs of the last entry.
+                hungWarnings[hungWarnings.length - 1].silenceSecs = Math.round(silence / 1000);
             }
-        }, 30_000);
+        }, HUNG_TURN_CHECK_INTERVAL_MS);
 
         const rl = createInterface({ input: child.stdout! });
+
+        // Per-agent end-of-session signal. claude-code emits `result` as the final event.
+        // codex emits `turn.completed` after each turn (no global terminal); opencode `step_finish`.
+        // We only act on claude-code's `result` for now — that's where the hang was observed.
+        const isClaudeTerminalEvent = (event: AgentEvent) =>
+            options.agent === 'claude-code' && event.type === 'result';
 
         rl.on('line', (line) => {
             if (!line.trim()) return;
@@ -588,16 +622,78 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             options.onRawLine?.(line);
             try {
                 const event = JSON.parse(line) as AgentEvent;
+                // If this is a finalized assistant turn containing a tool_use block,
+                // we'll soon enter tool execution — pause hung detection until the
+                // next event (typically a `user` event with tool_use_result).
+                if (event.type === 'assistant' && event.message?.content?.some((b) => b.type === 'tool_use')) {
+                    awaitingToolResult = true;
+                } else {
+                    awaitingToolResult = false;
+                }
                 events.push(event);
                 options.onEvent?.(event);
+                if (isClaudeTerminalEvent(event) && postResultSigterm === null) {
+                    schedulePostResultTeardown();
+                }
             } catch { /* skip non-JSON */ }
         });
 
         let stderrOutput = '';
         child.stderr?.on('data', (d: Buffer) => { stderrOutput += d.toString(); });
 
-        child.on('close', (code, signal) => {
+        // Schedule graceful teardown after agent's terminal `result` event.
+        // Triggered ONLY after the stream tells us the agent is done. Tool-call cycles
+        // (which legitimately wait minutes on Apify nested actor I/O) are unaffected.
+        // Logs each cascade step to stderr so Apify run log captures it.
+        const logPostResult = (msg: string) => {
+            // eslint-disable-next-line no-console
+            console.warn(`[runAgent post-result] ${msg} (pid=${child.pid}, killed=${child.killed})`);
+        };
+
+        function schedulePostResultTeardown() {
+            const teardownStart = Date.now();
+            logPostResult('result event received — starting graceful teardown timer');
+            postResultSigterm = setTimeout(() => {
+                if (resolved || child.killed) return;
+                const dt = Math.round((Date.now() - teardownStart) / 1000);
+                logPostResult(`SIGTERM at +${dt}s — subprocess did not exit on its own`);
+                hungWarnings.push({
+                    elapsedMs: Date.now() - startTime,
+                    silenceSecs: Math.round(POST_RESULT_SIGTERM_MS / 1000),
+                });
+                child.kill('SIGTERM');
+            }, POST_RESULT_SIGTERM_MS);
+            postResultSigkill = setTimeout(() => {
+                if (resolved || child.killed) return;
+                const dt = Math.round((Date.now() - teardownStart) / 1000);
+                logPostResult(`SIGKILL at +${dt}s — SIGTERM did not take effect`);
+                child.kill('SIGKILL');
+            }, POST_RESULT_SIGKILL_MS);
+            postResultForceResolve = setTimeout(() => {
+                if (resolved) return;
+                const dt = Math.round((Date.now() - teardownStart) / 1000);
+                logPostResult(`force-resolve at +${dt}s — subprocess still alive after SIGKILL`);
+                // Subprocess won't exit even after SIGKILL (extremely rare — orphaned IO
+                // or stuck kernel state). Force-resolve so runner proceeds to checks/judge.
+                finalize(null, 'SIGKILL');
+            }, POST_RESULT_FORCE_RESOLVE_MS);
+        }
+
+        function finalize(code: number | null, signal: NodeJS.Signals | null) {
+            if (resolved) return;
+            resolved = true;
             clearInterval(hungTimer);
+            if (postResultSigterm) clearTimeout(postResultSigterm);
+            if (postResultSigkill) clearTimeout(postResultSigkill);
+            if (postResultForceResolve) clearTimeout(postResultForceResolve);
+            doResolve(code, signal);
+        }
+
+        child.on('close', (code, signal) => {
+            finalize(code, signal);
+        });
+
+        function doResolve(code: number | null, signal: NodeJS.Signals | null) {
             const wallDurationMs = Date.now() - startTime;
 
             // Select parser based on agent
@@ -653,10 +749,15 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 stderr: stderrOutput,
                 hungWarnings,
             });
-        });
+        }
 
         child.on('error', (err) => {
+            if (resolved) return;
+            resolved = true;
             clearInterval(hungTimer);
+            if (postResultSigterm) clearTimeout(postResultSigterm);
+            if (postResultSigkill) clearTimeout(postResultSigkill);
+            if (postResultForceResolve) clearTimeout(postResultForceResolve);
             resolve({
                 text: '',
                 metrics: { ...EMPTY_METRICS, durationMs: Date.now() - startTime },

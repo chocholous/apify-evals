@@ -130,6 +130,9 @@ for (let i = 0; i < tests.length; i++) {
         let rawLineCount = 0;
         const rawLines: string[] = [];
         const agentSpan = startAgentSpan(tracer, agent);
+        const agentPhaseStart = Date.now();
+        log.info(`  [phase=agent] start`);
+        let resultEventLogged = false;
         const result = await runAgent({
             agent,
             prompt: test.test,
@@ -163,8 +166,15 @@ for (let i = 0; i < tests.length; i++) {
                         log.info(`    [turn ${turnCount}] writing (${textLen} chars)`);
                     }
                 }
+                if (event.type === 'result' && !resultEventLogged) {
+                    resultEventLogged = true;
+                    const elapsed = Math.round((Date.now() - agentPhaseStart) / 1000);
+                    log.info(`  [phase=agent] result event after ${elapsed}s (subtype=${event.subtype ?? '?'}, stop_reason=${event.stop_reason ?? '?'}); waiting for subprocess exit`);
+                }
             },
         });
+        const agentDur = Math.round((Date.now() - agentPhaseStart) / 1000);
+        log.info(`  [phase=agent] end after ${agentDur}s (stopReason=${result.stopReason}, exitCode=${result.exitCode}, signal=${result.signal ?? 'none'})`);
         endAgentSpan(agentSpan, result);
         Actor.setValue('LIVE-AGENT-LOG', rawLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
 
@@ -213,6 +223,8 @@ for (let i = 0; i < tests.length; i++) {
         } catch { /* non-critical */ }
 
         // Download Apify datasets created during agent run so judge can verify data
+        const dlStart = Date.now();
+        log.info(`  [phase=downloads] start`);
         try {
             const dsResult = downloadApifyDatasets(
                 result.events as unknown as Array<Record<string, unknown>>,
@@ -222,7 +234,8 @@ for (let i = 0; i < tests.length; i++) {
             if (dsResult.downloadedCount > 0) {
                 log.info(`  Downloaded ${dsResult.downloadedCount}/${dsResult.datasetIds.length} dataset(s) to eval-datasets/`);
             }
-        } catch { /* non-critical */ }
+        } catch (err) { log.warning(`  Downloads failed: ${err instanceof Error ? err.message : String(err)}`); }
+        log.info(`  [phase=downloads] end after ${Math.round((Date.now() - dlStart) / 1000)}s`);
 
         // Monitor extraction
         if (test.monitor) {
@@ -247,6 +260,7 @@ for (let i = 0; i < tests.length; i++) {
         }
 
         // Judge all checks
+        log.info(`  [phase=judge] start`);
         const judgeSpan = startJudgeSpan(tracer);
         const judgeStart = Date.now();
         const judgeLines: string[] = [];
@@ -258,6 +272,7 @@ for (let i = 0; i < tests.length; i++) {
             },
         });
         judgeMs = Date.now() - judgeStart;
+        log.info(`  [phase=judge] end after ${Math.round(judgeMs / 1000)}s (verdict=${judgeResult.overallVerdict})`);
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
         allJudgeLines.push(JSON.stringify({
             testIndex: i,

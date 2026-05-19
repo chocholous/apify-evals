@@ -29,7 +29,10 @@ export interface ParsedCheckpoint {
 }
 
 export function parseCheckpointSection(checkpoint: string): ParsedCheckpoint {
-    const hasSubsections = /^###\s+(?:warn-)?(?:Checks?|Scripts?|Judge)/im.test(checkpoint);
+    // Must accept the same header forms as SECTION_HEADER_REGEX below, otherwise a
+    // checkpoint containing only `### eval-Judge` (or only `### warn-Judge`) would
+    // silently fall back to flat parsing and the judge would be dropped.
+    const hasSubsections = /^###\s+(?:(?:warn-|eval-)?Judge|Checks?|Scripts?)/im.test(checkpoint);
 
     if (hasSubsections) {
         return parseSubsections(checkpoint);
@@ -441,16 +444,33 @@ export async function judgeAllChecks(
         });
 
         if (isEvalReview) {
-            const severity = (llmResult?.eval_gap_severity ?? 'noncritical') as EvalGapSeverity;
-            verdicts.push({
-                checkType: 'eval-review',
-                checkValue: judge.prompt,
-                verdict: 'pass',
-                evidence: llmResult?.reasoning ?? 'LLM eval-review returned no result after retries',
-                evalGapSeverity: severity,
-            });
+            if (!llmResult) {
+                // No retries succeeded — we don't actually know the eval gap.
+                // Don't fabricate an evalGapSeverity here.
+                verdicts.push({
+                    checkType: 'eval-review',
+                    checkValue: judge.prompt,
+                    verdict: 'unclear',
+                    evidence: 'LLM eval-review returned no result after retries',
+                });
+            } else {
+                const severity = (llmResult.eval_gap_severity ?? 'noncritical') as EvalGapSeverity;
+                // Map eval gap severity to a verdict so dataset consumers can filter on it.
+                // eval-review verdicts are excluded from computeOverall, so this never affects
+                // the agent's overall pass/fail.
+                const verdict: VerdictValue = severity === 'ok' ? 'pass'
+                    : severity === 'critical' ? 'fail'
+                    : 'warning';
+                verdicts.push({
+                    checkType: 'eval-review',
+                    checkValue: judge.prompt,
+                    verdict,
+                    evidence: llmResult.reasoning,
+                    evalGapSeverity: severity,
+                });
+            }
         } else {
-            const failVerdict = 'fail' as const;
+            const failVerdict = judge.severity === 'warning' ? 'warning' as const : 'fail' as const;
             if (llmResult) {
                 const verdict = llmResult.verdict === 'fail' ? failVerdict : llmResult.verdict as VerdictValue;
                 verdicts.push({
@@ -478,7 +498,9 @@ export async function judgeAllChecks(
 function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
     // eval-review checks grade the eval framework itself, not the agent output
     const agentVerdicts = verdicts.filter((v) => v.checkType !== 'eval-review');
-    if (agentVerdicts.length === 0) return 'pass';
+    // No agent-targeting checks ⇒ verdict is undefined, not a free pass.
+    // Catches misconfigured scenarios (empty checkpoint, only eval-Judge blocks).
+    if (agentVerdicts.length === 0) return 'unclear';
     if (agentVerdicts.some((v) => v.verdict === 'platform_failure')) return 'platform_failure';
     if (agentVerdicts.some((v) => v.verdict === 'fail')) return 'fail';
     if (agentVerdicts.some((v) => v.verdict === 'warning')) return 'warning';
