@@ -141,6 +141,10 @@ export interface AgentResult {
     abortReason: string | null;
     error: string | null;
     hungWarnings: HungWarning[];
+    // Set when the silence-escalation ladder fired against the agent subprocess.
+    // null when subprocess exited on its own. Surfaced for analytics; does NOT
+    // imply the run is invalid — agentOutput may still be complete.
+    shutdownReason: string | null;
 }
 
 export type AgentType = 'claude-code' | 'codex' | 'opencode';

@@ -193,13 +193,25 @@ for (let i = 0; i < tests.length; i++) {
             break;
         }
 
-        if (result.error) {
-            log.warning(`  Test ${i + 1} error: ${result.error}`);
+        // Only short-circuit Judge when the agent produced no output at all. An exit
+        // code error with non-empty agentOutput (e.g. SIGTERM from silence escalation
+        // after the report was already written, or budget_exceeded mid-render) is
+        // still evaluable — let Judge run and report verdicts. The error is surfaced
+        // to the dataset row via `error`/`stopReason` for analytics. See GH#1.
+        if (result.error && !result.text.length) {
+            log.warning(`  Test ${i + 1} error (no output): ${result.error}`);
             judgeResult = {
                 verdicts: [{ checkType: 'error', checkValue: '', verdict: 'fail', evidence: `Agent error: ${result.error}` }],
                 overallVerdict: 'fail',
             };
             break;
+        }
+
+        if (result.error) {
+            log.warning(`  Test ${i + 1} agent error (will still judge ${result.text.length} chars of output): ${result.error}`);
+        }
+        if (result.shutdownReason) {
+            log.warning(`  Test ${i + 1} subprocess shutdownReason=${result.shutdownReason} (judge will still run on captured output)`);
         }
 
         log.info(`  Agent responded (${result.metrics.numTurns} turns, ${formatCost(result.metrics.totalCostUsd)}, ${formatDuration(result.metrics.durationMs)})`);
@@ -321,6 +333,7 @@ for (let i = 0; i < tests.length; i++) {
         abortReason: lastRunResult?.aborted ? 'budget_exceeded' : null,
         error: lastRunResult?.error ?? null,
         hungWarnings: lastRunResult?.hungWarnings ?? [],
+        shutdownReason: lastRunResult?.shutdownReason ?? null,
     };
 
     endTestSpan(testSpan, agentResult.overallVerdict);

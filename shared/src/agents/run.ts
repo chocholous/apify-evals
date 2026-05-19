@@ -4,7 +4,15 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, HungWarning } from '../types.js';
-import { HUNG_TURN_THRESHOLD_MS, HUNG_TURN_CHECK_INTERVAL_MS } from '../constants.js';
+import {
+    SILENCE_NOTICE_MS,
+    SILENCE_WARN1_MS,
+    SILENCE_WARN2_MS,
+    SILENCE_SIGTERM_MS,
+    SILENCE_SIGKILL_GRACE_MS,
+    SILENCE_FORCE_RESOLVE_GRACE_MS,
+    SILENCE_CHECK_INTERVAL_MS,
+} from '../constants.js';
 import { getAgentDef, buildAgentArgs } from './registry.js';
 
 export interface AgentRunOptions {
@@ -37,6 +45,9 @@ export interface AgentRunResult {
     stopReason: string;
     stderr: string;
     hungWarnings: HungWarning[];
+    // Set when the silence-escalation ladder fires (SIGTERM/SIGKILL/force-resolve).
+    // null when the subprocess exited on its own or was aborted via abortSignal.
+    shutdownReason: string | null;
 }
 
 export const EMPTY_METRICS: RunMetrics = {
@@ -132,6 +143,13 @@ interface ParsedStream {
 export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
     let text = '';
     let resultEvent: AgentEvent | null = null;
+    // claude-code can emit multiple `result` events per session (e.g. task-notification
+    // synthetic turns trigger new result events). `duration_ms` and `num_turns` reset
+    // per-turn rather than accumulating, so we sum them ourselves. `total_cost_usd` and
+    // token usage are cumulative on the stream — keep the last value.
+    let accumDurationMs = 0;
+    let accumDurationApiMs = 0;
+    let accumNumTurns = 0;
     const toolCalls: string[] = [];
     const toolCallDetails: Array<{ tool: string; turn: number; input: Record<string, unknown> }> = [];
     const perTurnTokens: Array<{ turn: number; input: number; output: number }> = [];
@@ -227,6 +245,9 @@ export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
 
         if (event.type === 'result') {
             resultEvent = event;
+            accumDurationMs += event.duration_ms ?? 0;
+            accumDurationApiMs += event.duration_api_ms ?? 0;
+            accumNumTurns += event.num_turns ?? 0;
         }
     }
 
@@ -243,9 +264,9 @@ export function parseClaudeStream(events: AgentEvent[]): ParsedStream {
             cacheReadTokens: resultEvent?.usage?.cache_read_input_tokens ?? 0,
             cacheCreationTokens: resultEvent?.usage?.cache_creation_input_tokens ?? 0,
             totalCostUsd: resultEvent?.total_cost_usd ?? 0,
-            durationMs: resultEvent?.duration_ms ?? 0,
-            durationApiMs: resultEvent?.duration_api_ms ?? 0,
-            numTurns: resultEvent?.num_turns ?? apiCallNum,
+            durationMs: accumDurationMs,
+            durationApiMs: accumDurationApiMs,
+            numTurns: accumNumTurns || apiCallNum,
             modelUsage: resultEvent?.modelUsage ?? {},
         }),
         getError: () => {
@@ -520,6 +541,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             stopReason: 'error',
             stderr: '',
             hungWarnings: [],
+            shutdownReason: null,
         });
     }
 
@@ -557,20 +579,17 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
 
         let aborted = false;
         let resolved = false;
-        let postResultSigterm: NodeJS.Timeout | null = null;
-        let postResultSigkill: NodeJS.Timeout | null = null;
-        let postResultForceResolve: NodeJS.Timeout | null = null;
-        // Thresholds (ms after `result` event arrives) for graceful subprocess teardown.
-        // Healthy subprocess exits within ~2s of result event; >30s means it's hung
-        // (commonly: open bg Bash, stuck on stdin, or pipe-wait). Force-kill + force-resolve
-        // ensures the runner can proceed to checks/judge regardless of subprocess state.
-        const POST_RESULT_SIGTERM_MS = 30_000;
-        const POST_RESULT_SIGKILL_MS = 60_000;
-        const POST_RESULT_FORCE_RESOLVE_MS = 65_000;
+        // Set when the silence-escalation ladder fires SIGTERM/SIGKILL/force-resolve.
+        // Surfaced to the caller for analytics (e.g. "forced_teardown") without blocking
+        // judge evaluation — agentOutput may still be complete even if subprocess hung.
+        let shutdownReason: string | null = null;
+        let sigkillTimer: NodeJS.Timeout | null = null;
+        let forceResolveTimer: NodeJS.Timeout | null = null;
 
         if (options.abortSignal) {
             options.abortSignal.addEventListener('abort', () => {
                 aborted = true;
+                shutdownReason = 'aborted';
                 child.kill('SIGTERM');
                 setTimeout(() => {
                     if (!child.killed) child.kill('SIGKILL');
@@ -583,19 +602,42 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
         let lastEventTime = Date.now();
         // Tool-call-aware silence detection. We do NOT count silence while a tool is
         // running on the agent's behalf (apify run, npm install, etc. can legitimately
-        // take minutes). We only flag silence while we're waiting on the LLM.
-        let awaitingToolResult = false;
+        // take minutes). Multiple tool calls can be in flight concurrently (e.g.
+        // background bash + foreground Read) — track them by tool_use id so the count
+        // is reliable across interleaved events.
+        const inFlightTools = new Set<string>();
+        // Silence-escalation ladder. Drives subprocess teardown when the stream goes
+        // quiet AND no tool is in flight. Replaces the per-result SIGTERM timer that
+        // misfired on task-notification heartbeats (see GH#1).
+        // Cascade: 30s notice → 40s warn → 50s warn → 60s SIGTERM → 70s SIGKILL → 75s force-resolve.
+        let escalationLevel = 0; // 0 → 30 → 40 → 50 → 60
         let hangEpisodeActive = false;
+
+        const logShutdown = (msg: string) => {
+            // eslint-disable-next-line no-console
+            console.warn(`[runAgent shutdown] ${msg} (pid=${child.pid}, killed=${child.killed})`);
+        };
+
         const hungTimer = setInterval(() => {
-            if (awaitingToolResult) {
+            if (resolved) return;
+            // Once SIGTERM has fired, downstream timers (SIGKILL, force-resolve) run
+            // on their own schedule — do not re-evaluate or re-arm them even if a
+            // late event arrives and resets silence below the notice threshold.
+            if (escalationLevel >= 60) return;
+            // Suppress silence detection while any tool is executing — apify nested
+            // actor calls, long builds, etc. can legitimately take many minutes.
+            if (inFlightTools.size > 0) {
                 hangEpisodeActive = false;
+                escalationLevel = 0;
                 return;
             }
             const silence = Date.now() - lastEventTime;
-            if (silence < HUNG_TURN_THRESHOLD_MS) {
+            if (silence < SILENCE_NOTICE_MS) {
                 hangEpisodeActive = false;
+                escalationLevel = 0;
                 return;
             }
+            // Record/refresh hang episode in hungWarnings for downstream analytics.
             if (!hangEpisodeActive) {
                 hungWarnings.push({
                     elapsedMs: Date.now() - startTime,
@@ -603,18 +645,39 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 });
                 hangEpisodeActive = true;
             } else {
-                // Same hang episode — refresh the silenceSecs of the last entry.
                 hungWarnings[hungWarnings.length - 1].silenceSecs = Math.round(silence / 1000);
             }
-        }, HUNG_TURN_CHECK_INTERVAL_MS);
+            // Escalate one rung at a time so each step logs exactly once.
+            if (silence >= SILENCE_SIGTERM_MS && escalationLevel < 60) {
+                escalationLevel = 60;
+                shutdownReason = 'silence_sigterm';
+                logShutdown(`SIGTERM at ${Math.round(silence / 1000)}s sustained idle (no in-flight tools)`);
+                child.kill('SIGTERM');
+                sigkillTimer = setTimeout(() => {
+                    if (resolved || child.killed) return;
+                    shutdownReason = 'silence_sigkill';
+                    logShutdown('SIGKILL — SIGTERM did not take effect');
+                    child.kill('SIGKILL');
+                }, SILENCE_SIGKILL_GRACE_MS);
+                forceResolveTimer = setTimeout(() => {
+                    if (resolved) return;
+                    shutdownReason = 'silence_force_resolve';
+                    logShutdown('force-resolve — subprocess still alive after SIGKILL');
+                    finalize(null, 'SIGKILL');
+                }, SILENCE_SIGKILL_GRACE_MS + SILENCE_FORCE_RESOLVE_GRACE_MS);
+            } else if (silence >= SILENCE_WARN2_MS && escalationLevel < 50) {
+                escalationLevel = 50;
+                logShutdown(`silence ${Math.round(silence / 1000)}s — preparing to shutdown`);
+            } else if (silence >= SILENCE_WARN1_MS && escalationLevel < 40) {
+                escalationLevel = 40;
+                logShutdown(`silence ${Math.round(silence / 1000)}s — warning`);
+            } else if (silence >= SILENCE_NOTICE_MS && escalationLevel < 30) {
+                escalationLevel = 30;
+                logShutdown(`silence ${Math.round(silence / 1000)}s — idle (no in-flight tools)`);
+            }
+        }, SILENCE_CHECK_INTERVAL_MS);
 
         const rl = createInterface({ input: child.stdout! });
-
-        // Per-agent end-of-session signal. claude-code emits `result` as the final event.
-        // codex emits `turn.completed` after each turn (no global terminal); opencode `step_finish`.
-        // We only act on claude-code's `result` for now — that's where the hang was observed.
-        const isClaudeTerminalEvent = (event: AgentEvent) =>
-            options.agent === 'claude-code' && event.type === 'result';
 
         rl.on('line', (line) => {
             if (!line.trim()) return;
@@ -622,70 +685,41 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             options.onRawLine?.(line);
             try {
                 const event = JSON.parse(line) as AgentEvent;
-                // If this is a finalized assistant turn containing a tool_use block,
-                // we'll soon enter tool execution — pause hung detection until the
-                // next event (typically a `user` event with tool_use_result).
-                if (event.type === 'assistant' && event.message?.content?.some((b) => b.type === 'tool_use')) {
-                    awaitingToolResult = true;
-                } else {
-                    awaitingToolResult = false;
+                // Track in-flight tool_use ids. Add on assistant tool_use blocks,
+                // drain on user tool_result blocks. claude-code attaches a unique
+                // tool_use id to each block; tool_result events reference it via id.
+                if (event.type === 'assistant' && event.message?.content) {
+                    for (const block of event.message.content) {
+                        if (block.type === 'tool_use') {
+                            const id = (block as Record<string, unknown>).id as string | undefined;
+                            if (id) inFlightTools.add(id);
+                        }
+                    }
+                }
+                if (event.type === 'user') {
+                    const content = (event as unknown as Record<string, unknown>).content;
+                    const contentArr = Array.isArray(content) ? content : (event.message?.content ?? []);
+                    for (const block of contentArr as Array<Record<string, unknown>>) {
+                        if (block.type === 'tool_result') {
+                            const id = (block.tool_use_id ?? block.id) as string | undefined;
+                            if (id) inFlightTools.delete(id);
+                        }
+                    }
                 }
                 events.push(event);
                 options.onEvent?.(event);
-                if (isClaudeTerminalEvent(event) && postResultSigterm === null) {
-                    schedulePostResultTeardown();
-                }
             } catch { /* skip non-JSON */ }
         });
 
         let stderrOutput = '';
         child.stderr?.on('data', (d: Buffer) => { stderrOutput += d.toString(); });
 
-        // Schedule graceful teardown after agent's terminal `result` event.
-        // Triggered ONLY after the stream tells us the agent is done. Tool-call cycles
-        // (which legitimately wait minutes on Apify nested actor I/O) are unaffected.
-        // Logs each cascade step to stderr so Apify run log captures it.
-        const logPostResult = (msg: string) => {
-            // eslint-disable-next-line no-console
-            console.warn(`[runAgent post-result] ${msg} (pid=${child.pid}, killed=${child.killed})`);
-        };
-
-        function schedulePostResultTeardown() {
-            const teardownStart = Date.now();
-            logPostResult('result event received — starting graceful teardown timer');
-            postResultSigterm = setTimeout(() => {
-                if (resolved || child.killed) return;
-                const dt = Math.round((Date.now() - teardownStart) / 1000);
-                logPostResult(`SIGTERM at +${dt}s — subprocess did not exit on its own`);
-                hungWarnings.push({
-                    elapsedMs: Date.now() - startTime,
-                    silenceSecs: Math.round(POST_RESULT_SIGTERM_MS / 1000),
-                });
-                child.kill('SIGTERM');
-            }, POST_RESULT_SIGTERM_MS);
-            postResultSigkill = setTimeout(() => {
-                if (resolved || child.killed) return;
-                const dt = Math.round((Date.now() - teardownStart) / 1000);
-                logPostResult(`SIGKILL at +${dt}s — SIGTERM did not take effect`);
-                child.kill('SIGKILL');
-            }, POST_RESULT_SIGKILL_MS);
-            postResultForceResolve = setTimeout(() => {
-                if (resolved) return;
-                const dt = Math.round((Date.now() - teardownStart) / 1000);
-                logPostResult(`force-resolve at +${dt}s — subprocess still alive after SIGKILL`);
-                // Subprocess won't exit even after SIGKILL (extremely rare — orphaned IO
-                // or stuck kernel state). Force-resolve so runner proceeds to checks/judge.
-                finalize(null, 'SIGKILL');
-            }, POST_RESULT_FORCE_RESOLVE_MS);
-        }
-
         function finalize(code: number | null, signal: NodeJS.Signals | null) {
             if (resolved) return;
             resolved = true;
             clearInterval(hungTimer);
-            if (postResultSigterm) clearTimeout(postResultSigterm);
-            if (postResultSigkill) clearTimeout(postResultSigkill);
-            if (postResultForceResolve) clearTimeout(postResultForceResolve);
+            if (sigkillTimer) clearTimeout(sigkillTimer);
+            if (forceResolveTimer) clearTimeout(forceResolveTimer);
             doResolve(code, signal);
         }
 
@@ -735,6 +769,12 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
 
             const trajectory = deriveTrajectory(trajectoryData, metrics.numTurns);
 
+            // If the silence-escalation ladder fired (forced_teardown / etc.), prefer
+            // that as the stopReason so analytics can distinguish "agent finished" vs
+            // "we killed it". Do NOT promote it to `error` — the agentOutput may still
+            // be complete; main.ts decides judge gating based on text.length.
+            const finalStopReason = shutdownReason && !error ? 'forced_teardown' : stopReason;
+
             resolve({
                 text: parsed.getText(),
                 metrics,
@@ -745,9 +785,10 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 signal,
                 aborted,
                 error,
-                stopReason,
+                stopReason: finalStopReason,
                 stderr: stderrOutput,
                 hungWarnings,
+                shutdownReason,
             });
         }
 
@@ -755,9 +796,8 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             if (resolved) return;
             resolved = true;
             clearInterval(hungTimer);
-            if (postResultSigterm) clearTimeout(postResultSigterm);
-            if (postResultSigkill) clearTimeout(postResultSigkill);
-            if (postResultForceResolve) clearTimeout(postResultForceResolve);
+            if (sigkillTimer) clearTimeout(sigkillTimer);
+            if (forceResolveTimer) clearTimeout(forceResolveTimer);
             resolve({
                 text: '',
                 metrics: { ...EMPTY_METRICS, durationMs: Date.now() - startTime },
@@ -771,6 +811,7 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
                 stopReason: 'error',
                 stderr: '',
                 hungWarnings,
+                shutdownReason,
             });
         });
     });

@@ -74,6 +74,7 @@ function makeMockAgentResult(overrides?: Partial<AgentRunResult>): AgentRunResul
         stopReason: 'end_turn',
         stderr: '',
         hungWarnings: [],
+        shutdownReason: null,
         ...overrides,
     };
 }
