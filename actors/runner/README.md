@@ -4,12 +4,20 @@
 
 Use it to benchmark AI agents, compare tool integration methods (MCP vs CLI vs mcpc), and catch regressions.
 
-## How to use
+## Quick start (first run)
 
-1. Write a **scenario** in Markdown (see format below)
-2. Choose an **agent** (Claude Code, Codex, or OpenCode)
-3. Optionally set a **budget limit** and **environment variables** (API keys)
-4. Run the Actor — results appear in the dataset
+The **Testing Scenario** input field is prefilled with a working example (one question about Jupiter). The shortest end-to-end first run:
+
+1. **Pick an agent.** Default `claude-code` on `claude-sonnet-4-6` works for most scenarios. Other options: `codex`, `opencode`.
+2. **Provide credentials** in **Environment Variables** (JSON object, marked secret, masked in logs):
+   - `claude-code` → `{"ANTHROPIC_API_KEY": "sk-ant-..."}` — for Claude subscription/OAuth auth instead, see the note at the end of [Init presets](#init-presets).
+   - `codex` → `{"OPENAI_API_KEY": "sk-..."}`
+   - `opencode` → keys depend on the configured model provider.
+3. Click **Start**. Active defaults: `$1` budget cap (soft), `10` max turns per test, init preset `none`.
+4. **Watch the run live.** In the run view open **Storage → Key-value store → `LIVE-AGENT-LOG`** (NDJSON, streams token-by-token as the agent generates). `LIVE-JUDGE-LOG` streams the LLM judge the same way.
+5. **When finished**, the **Dataset** holds one item per test with `overallVerdict`, per-check `verdicts[]`, `metrics`, `efficiency`, and `trajectory`. Full event streams in `CONVERSATION-LOG` / `JUDGE-LOG`, OpenTelemetry trace in `OTEL-TRACE`. Schema details in [Output](#output).
+
+Only `scenario` is a required input field — every other field has a default. Note that `maxBudgetUsd` and `maxTurns` are honored only by `claude-code` (the `codex` and `opencode` CLIs don't expose equivalent flags).
 
 ## Scenario format
 
@@ -324,7 +332,7 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 
 ## Scenario cookbook
 
-The repo includes 22 ready-to-use scenarios in the [`scenarios/`](../../scenarios/) directory:
+The repo includes 23 ready-to-use scenarios in the [`scenarios/`](../../scenarios/) directory:
 
 | Scenario | What it tests |
 |----------|--------------|

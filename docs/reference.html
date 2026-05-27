@@ -256,6 +256,7 @@ details .content { padding: 0 16px 16px; }
     <a href="#flow">Execution Flow</a>
 
     <div class="section-label">User Guide</div>
+    <a href="#quickstart">Quick start</a>
     <a href="#input">Input konfigurace</a>
     <a href="#scenarios">Scenario format</a>
     <a href="#checkpoints">Checkpoint typy</a>
@@ -304,29 +305,33 @@ details .content { padding: 0 16px 16px; }
 <h2 id="architecture">Architektura</h2>
 <p>Monorepo s npm workspaces:</p>
 <pre><code>apify-evals/
-├── shared/                  <span class="cmt"># Sdílená knihovna</span>
+├── shared/                  <span class="cmt"># Sdílená knihovna (@apify-evals/shared)</span>
 │   ├── src/
-│   │   ├── types.ts         <span class="cmt"># Core interfaces</span>
+│   │   ├── index.ts          <span class="cmt"># Re-exporty</span>
+│   │   ├── types.ts          <span class="cmt"># Core interfaces</span>
+│   │   ├── constants.ts      <span class="cmt"># Timeouts, model IDs, silence ladder</span>
 │   │   ├── scenario-parser.ts
-│   │   ├── judge.ts         <span class="cmt"># Checkpoint evaluace</span>
-│   │   ├── agents/
-│   │   │   ├── run.ts       <span class="cmt"># Agent execution</span>
-│   │   │   ├── registry.ts  <span class="cmt"># CLI definice</span>
-│   │   │   └── claude.ts    <span class="cmt"># LLM judge backend</span>
-│   │   ├── init-presets.ts
+│   │   ├── judge.ts          <span class="cmt"># Checkpoint evaluace</span>
+│   │   ├── metrics.ts        <span class="cmt"># formatCost(), formatDuration()</span>
 │   │   ├── log-masker.ts
+│   │   ├── init-presets.ts
+│   │   ├── apify-datasets.ts <span class="cmt"># Auto-download datasetů z agent výstupu</span>
 │   │   ├── otel.ts
-│   │   └── constants.ts
-│   └── __tests__/
+│   │   ├── otel-exporter.ts  <span class="cmt"># BufferSpanExporter</span>
+│   │   └── agents/
+│   │       ├── run.ts        <span class="cmt"># Agent execution + NDJSON parsing</span>
+│   │       ├── registry.ts   <span class="cmt"># CLI definice (claude/codex/opencode)</span>
+│   │       └── claude.ts     <span class="cmt"># LLM judge backend (judgeLlm)</span>
+│   └── src/__tests__/
 ├── actors/
 │   ├── runner/              <span class="cmt"># Hlavní Apify Actor</span>
 │   │   ├── src/main.ts
 │   │   └── .actor/
-│   └── orchestrator/        <span class="cmt"># (empty, planned)</span>
-├── scenarios/               <span class="cmt"># 24 hotových scénářů</span>
-├── examples/                <span class="cmt"># 9 example input JSON</span>
+│   └── orchestrator/        <span class="cmt"># (empty, planned Fáze 3)</span>
+├── scenarios/               <span class="cmt"># 23 hotových scénářů (+ podsložky actor-dev/, competitive-intel/)</span>
+├── examples/                <span class="cmt"># 10 example input JSON</span>
 ├── docs/
-└── Dockerfile</code></pre>
+└── Dockerfile               <span class="cmt"># Multi-stage, jeden image pro všechny agenty</span></code></pre>
 
 <h2 id="flow">Execution Flow</h2>
 <div class="flow">
@@ -380,6 +385,35 @@ details .content { padding: 0 16px 16px; }
 <hr>
 
 <!-- ==================== USER GUIDE ==================== -->
+<h2 id="quickstart">Quick start (první run)</h2>
+<p>Vstupní pole <strong>Testing Scenario</strong> je prefilované funkčním příkladem (jedna otázka na Jupiter, checkpoint <code>contains: Jupiter</code> + LLM judge). Nejkratší end-to-end první spuštění:</p>
+
+<ol>
+    <li style="margin-bottom:12px"><strong>Vyber agenta.</strong> Default <code>claude-code</code> na <code>claude-sonnet-4-6</code> stačí pro většinu scénářů. Alternativy: <code>codex</code>, <code>opencode</code>.</li>
+    <li style="margin-bottom:12px"><strong>Vlož credentials</strong> do pole <strong>Environment Variables</strong> (JSON object, secret, automaticky maskovaný v logech):
+        <div class="tabs" data-group="qs-creds" style="margin-top:8px">
+            <button class="tab active" data-tab="claude">claude-code</button>
+            <button class="tab" data-tab="codex">codex</button>
+            <button class="tab" data-tab="opencode">opencode</button>
+        </div>
+        <div class="tab-content active" data-tab="claude" data-group="qs-creds">
+<pre><code>{<span class="str">"ANTHROPIC_API_KEY"</span>: <span class="str">"sk-ant-..."</span>}</code></pre>
+            <p>Pro Claude subscription/OAuth viz poznámka na konci sekce <a href="#presets">Init Presets</a>.</p>
+        </div>
+        <div class="tab-content" data-tab="codex" data-group="qs-creds">
+<pre><code>{<span class="str">"OPENAI_API_KEY"</span>: <span class="str">"sk-..."</span>}</code></pre>
+        </div>
+        <div class="tab-content" data-tab="opencode" data-group="qs-creds">
+<pre><code><span class="cmt">// klíče závisí na konfigurovaném model provideru</span></code></pre>
+        </div>
+    </li>
+    <li style="margin-bottom:12px"><strong>Klikni Start.</strong> Aktivní defaulty: <code>$1</code> budget cap (soft, jen <code>claude-code</code>), <code>10</code> max turns per test (jen <code>claude-code</code>), init preset <code>none</code>.</li>
+    <li style="margin-bottom:12px"><strong>Sleduj run živě.</strong> V detailu runu: <strong>Storage &rarr; Key-value store &rarr; <code>LIVE-AGENT-LOG</code></strong> (NDJSON, streamuje se token-by-token jak agent generuje &mdash; <code>text_delta</code> / <code>thinking_delta</code>). <code>LIVE-JUDGE-LOG</code> streamuje LLM judge stejným způsobem.</li>
+    <li><strong>Po doběhnutí</strong> obsahuje <strong>Dataset</strong> jeden item per test s <code>overallVerdict</code>, per-check <code>verdicts[]</code>, <code>metrics</code>, <code>efficiency</code> a <code>trajectory</code>. Plné event streamy v <code>CONVERSATION-LOG</code> / <code>JUDGE-LOG</code>, OpenTelemetry trace v <code>OTEL-TRACE</code>. Schema viz <a href="#output">Output</a>.</li>
+</ol>
+
+<p style="margin-top:16px"><span class="badge badge-blue">Pozn.</span> Jediný povinný input je <code>scenario</code>; všechna ostatní pole mají rozumný default. <code>maxBudgetUsd</code> a <code>maxTurns</code> respektuje pouze <code>claude-code</code> (CLI Codex a OpenCode ekvivalentní flagy nemají &mdash; viz <a href="#agent-registry">Agent registry</a>).</p>
+
 <h2 id="input">Input konfigurace</h2>
 <p>Jediný povinný input je <code>scenario</code>. Vše ostatní má rozumné defaulty.</p>
 
@@ -582,18 +616,26 @@ Optional: is error handling present?</code></pre>
 
 <h3>LLM Judge</h3>
 <table>
-    <thead><tr><th>Syntax</th><th>Model</th><th>Severity</th></tr></thead>
+    <thead><tr><th>Syntax</th><th>Model</th><th>Severity</th><th>Schema</th></tr></thead>
     <tbody>
-        <tr><td>Plain text (flat format)</td><td>Sonnet (default)</td><td>fail</td></tr>
-        <tr><td><code>### Judge</code></td><td>Sonnet (default)</td><td>fail</td></tr>
-        <tr><td><code>### Judge (opus)</code></td><td>Opus</td><td>fail</td></tr>
-        <tr><td><code>### Judge (haiku)</code></td><td>Haiku</td><td>fail</td></tr>
-        <tr><td><code>### warn-Judge</code></td><td>Sonnet (default)</td><td>warning</td></tr>
-        <tr><td><code>### warn-Judge (haiku)</code></td><td>Haiku</td><td>warning</td></tr>
+        <tr><td>Plain text (flat format)</td><td>Sonnet (default)</td><td><span class="badge badge-red">fail</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### Judge</code></td><td>Sonnet (default)</td><td><span class="badge badge-red">fail</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### Judge (opus)</code></td><td>Opus</td><td><span class="badge badge-red">fail</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### Judge (haiku)</code></td><td>Haiku</td><td><span class="badge badge-red">fail</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### warn-Judge</code></td><td>Sonnet (default)</td><td><span class="badge badge-yellow">warning</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### warn-Judge (haiku)</code></td><td>Haiku</td><td><span class="badge badge-yellow">warning</span></td><td><code>{verdict, reasoning, eval_critique?}</code></td></tr>
+        <tr><td><code>### eval-Judge</code></td><td>Sonnet (default)</td><td><span class="badge badge-blue">eval</span></td><td><code>{eval_gap_severity, reasoning}</code></td></tr>
+        <tr><td><code>### eval-Judge (opus)</code></td><td>Opus</td><td><span class="badge badge-blue">eval</span></td><td><code>{eval_gap_severity, reasoning}</code></td></tr>
     </tbody>
 </table>
 <p>Model aliases: <code>haiku</code> &rarr; <code>claude-haiku-4-5-20251001</code>, <code>sonnet</code> &rarr; <code>claude-sonnet-4-6</code>, <code>opus</code> &rarr; <code>claude-opus-4-6</code>. Nebo plné model ID.</p>
-<p>JSON schema: <code>{verdict: "pass"|"fail"|"unclear", reasoning: "string"}</code>. Retry: max 2 pokusy, exponential backoff. Fallback: <code>unclear</code>.</p>
+<p><strong>Tři severity:</strong></p>
+<ul>
+    <li><code>fail</code> &mdash; default; fail verdict shodí <code>overallVerdict</code>.</li>
+    <li><code>warning</code> &mdash; <code>warn-</code> prefix; fail verdict se mapuje na <code>warning</code>, neshodí overall.</li>
+    <li><code>eval</code> &mdash; <code>eval-</code> prefix; hodnotí <strong>kvalitu eval frameworku</strong>, ne agent výstupu. Produkuje <code>CheckVerdict</code> s <code>checkType: 'eval-review'</code>, <strong>vyloučen z <code>computeOverall</code></strong>. Pro autora scénáře = "judge řekne, jestli mé checky vůbec měří správnou věc".</li>
+</ul>
+<p>Retry: max 2 pokusy, exponential backoff (1s, 2s). Fallback: <code>null</code> &rarr; <code>unclear</code>.</p>
 
 <h3>Severity prefix</h3>
 <p>Jakýkoli check type lze prefixovat <code>warn-</code> &rarr; fail se změní na <strong>warning</strong> (neblokuje overall pass):</p>
@@ -602,11 +644,13 @@ warn-regex: nice-to-have pattern
 warn-jq: [.[] | ...] | length > 0</code></pre>
 
 <h3>Overall verdict logika</h3>
+<p>Verdikty s <code>checkType === 'eval-review'</code> (z <code>### eval-Judge</code>) jsou <strong>vyloučeny</strong> z agregace &mdash; hodnotí eval framework, ne agenta. Z ostatních verdiktů se vybere podle precedence:</p>
 <pre><code><span class="kw">if</span> (any <span class="str">platform_failure</span>) &rarr; <span class="str">"platform_failure"</span>
 <span class="kw">if</span> (any <span class="str">fail</span>)             &rarr; <span class="str">"fail"</span>
 <span class="kw">if</span> (any <span class="str">warning</span>)          &rarr; <span class="str">"warning"</span>
 <span class="kw">if</span> (any <span class="str">unclear</span>)          &rarr; <span class="str">"unclear"</span>
 <span class="kw">else</span>                       &rarr; <span class="str">"pass"</span></code></pre>
+<p><code>platform_failure</code> je 5. hodnota <code>VerdictValue</code>: runner ho nastavuje, když v <code>tool_use_result</code> eventech najde Apify memory-limit chybu &mdash; odlišuje "agent selhal" vs. "platforma zabila proces".</p>
 
 <h3>jq checkpoint &mdash; conversation events</h3>
 <p>jq checkpointy operují nad <strong>conversation events</strong> (JSON array), ne nad agent text outputem. To umožňuje validovat <em>jaké nástroje</em> agent použil:</p>
@@ -653,7 +697,7 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
 </table>
 
 <h4>MCP Config JSON</h4>
-<p>Token placeholders (<code>${APIFY_TOKEN}</code>) se resolví z <code>envVariables</code>:</p>
+<p>Runner zapíše <code>mcpConfigJson</code> <strong>as-is</strong> do <code>.eval-config/mcp-config.json</code> &mdash; sám neprovádí interpolaci placeholderů. Agent (Claude Code CLI) pak konfiguraci načítá; zda <code>${APIFY_TOKEN}</code> uvnitř <code>env</code> blocku resolvuje záleží na MCP runtime daného agenta. Hodnoty <code>envVariables</code> jsou zároveň předány agentově subprocessu, takže MCP servery spuštěné přes <code>npx</code> tyto proměnné zdědí v <code>process.env</code>.</p>
 <pre><code>{
   <span class="prop">"mcpServers"</span>: {
     <span class="prop">"apify"</span>: {
@@ -786,7 +830,7 @@ npm install -g some-tool</code></pre>
   <span class="prop">"metrics"</span>: { ... },
   <span class="prop">"efficiency"</span>: { ... },
   <span class="prop">"trajectory"</span>: { ... },
-  <span class="prop">"judge"</span>: { <span class="prop">"judgeCostUsd"</span>: <span class="num">0.001</span>, <span class="prop">"judgeLatencyMs"</span>: <span class="num">2345</span>, <span class="prop">"judgeTurns"</span>: <span class="num">1</span> },
+  <span class="prop">"judge"</span>: { <span class="prop">"judgeCostUsd"</span>: <span class="num">0</span>, <span class="prop">"judgeLatencyMs"</span>: <span class="num">2345</span>, <span class="prop">"judgeTurns"</span>: <span class="num">1</span> },
 
   <span class="cmt">// Status</span>
   <span class="prop">"retryAttempts"</span>: <span class="num">0</span>,
@@ -794,8 +838,11 @@ npm install -g some-tool</code></pre>
   <span class="prop">"exitCode"</span>: <span class="num">0</span>,
   <span class="prop">"aborted"</span>: <span class="kw">false</span>,
   <span class="prop">"abortReason"</span>: <span class="kw">null</span>,
-  <span class="prop">"error"</span>: <span class="kw">null</span>
+  <span class="prop">"error"</span>: <span class="kw">null</span>,
+  <span class="prop">"hungWarnings"</span>: [],
+  <span class="prop">"shutdownReason"</span>: <span class="kw">null</span>
 }</code></pre>
+<p><strong>Pozn.:</strong> <code>judgeCostUsd</code> je <strong>vždy 0</strong> &mdash; CLI judge je <code>claude -p</code> subprocess a nereportuje token cost zpět. Pro odhad ceny použij <code>judgeLatencyMs</code> &times; tarif modelu z <code>judgeTurns</code> calls. <code>verdicts[]</code> může obsahovat <code>evalCritique</code> (jen llm-judge) a <code>evalGapSeverity</code> (jen eval-review) &mdash; obojí optional.</p>
 
 <details>
     <summary>RunMetrics</summary>
@@ -874,7 +921,7 @@ npm install -g some-tool</code></pre>
 </table>
 
 <h2 id="examples">Example scen&aacute;&rcaron;e</h2>
-<p>24 hotových scénářů v <code>scenarios/</code>:</p>
+<p>23 hotových scénářů v <code>scenarios/</code>:</p>
 <table>
     <thead><tr><th>Scénář</th><th>Testů</th><th>Checkpoints</th><th>Popis</th></tr></thead>
     <tbody>
@@ -912,18 +959,20 @@ npm install -g some-tool</code></pre>
 <table>
     <thead><tr><th>Modul</th><th>Soubor</th><th>Klíčové exporty</th></tr></thead>
     <tbody>
-        <tr><td>Types</td><td><code>types.ts</code></td><td><code>AgentResult</code>, <code>RunMetrics</code>, <code>EfficiencyMetrics</code>, <code>TrajectoryMetrics</code>, <code>CheckVerdict</code>, <code>VerdictValue</code>, <code>CheckType</code>, <code>AgentType</code></td></tr>
+        <tr><td>Index</td><td><code>index.ts</code></td><td>Re-exporty všech veřejných API z níže uvedených modulů</td></tr>
+        <tr><td>Types</td><td><code>types.ts</code></td><td><code>AgentResult</code>, <code>RunMetrics</code>, <code>EfficiencyMetrics</code>, <code>TrajectoryMetrics</code>, <code>ToolCallDetail</code>, <code>CheckVerdict</code>, <code>VerdictValue</code>, <code>CheckType</code>, <code>EvalGapSeverity</code>, <code>AgentType</code>, <code>AgentEvent</code>, <code>ModelUsage</code>, <code>HungWarning</code>, <code>JudgeMetrics</code>, <code>ScenarioMeta</code>, <code>TestCase</code>, <code>ParsedScenario</code>, <code>ExpectedToolCall</code></td></tr>
         <tr><td>Scenario Parser</td><td><code>scenario-parser.ts</code></td><td><code>parseScenario()</code>, <code>ScenarioParseError</code></td></tr>
-        <tr><td>Judge</td><td><code>judge.ts</code></td><td><code>judgeAllChecks()</code>, <code>parseCheckpointSection()</code></td></tr>
-        <tr><td>Agent Run</td><td><code>agents/run.ts</code></td><td><code>runAgent()</code></td></tr>
-        <tr><td>Agent Registry</td><td><code>agents/registry.ts</code></td><td><code>AGENT_REGISTRY</code>, <code>buildAgentArgs()</code>, <code>getAgentDef()</code></td></tr>
-        <tr><td>LLM Judge</td><td><code>agents/claude.ts</code></td><td><code>judgeLlm()</code></td></tr>
-        <tr><td>Init Presets</td><td><code>init-presets.ts</code></td><td><code>runInitPreset()</code></td></tr>
-        <tr><td>Log Masker</td><td><code>log-masker.ts</code></td><td><code>maskSecrets()</code></td></tr>
+        <tr><td>Judge</td><td><code>judge.ts</code></td><td><code>judgeAllChecks()</code>, <code>parseCheckpointSection()</code>, typy <code>CheckpointSpec</code>, <code>JudgeSpec</code>, <code>ParsedCheckpoint</code>, <code>JudgeOptions</code>, <code>JudgeResult</code>, <code>ScriptJudgeOptions</code></td></tr>
+        <tr><td>Agent Run</td><td><code>agents/run.ts</code></td><td><code>runAgent()</code>, <code>EMPTY_METRICS</code>, <code>EMPTY_EFFICIENCY</code>, <code>EMPTY_TRAJECTORY</code>, typy <code>AgentRunOptions</code>, <code>AgentRunResult</code></td></tr>
+        <tr><td>Agent Registry</td><td><code>agents/registry.ts</code></td><td><code>AGENT_REGISTRY</code>, <code>buildAgentArgs()</code>, <code>getAgentDef()</code>, typ <code>AgentDef</code></td></tr>
+        <tr><td>LLM Judge backend</td><td><code>agents/claude.ts</code></td><td><code>judgeLlm()</code>, typ <code>JudgeLlmResult</code>, <code>ClaudeJudgeOptions</code></td></tr>
+        <tr><td>Init Presets</td><td><code>init-presets.ts</code></td><td><code>runInitPreset()</code>, typy <code>PresetName</code>, <code>InitContext</code>, <code>InitResult</code></td></tr>
+        <tr><td>Log Masker</td><td><code>log-masker.ts</code></td><td><code>maskSecrets()</code>, <code>maskEventsJsonl()</code>, <code>stripEnvFromProcess()</code></td></tr>
         <tr><td>Metrics</td><td><code>metrics.ts</code></td><td><code>formatCost()</code>, <code>formatDuration()</code></td></tr>
-        <tr><td>OTel</td><td><code>otel.ts</code></td><td><code>initOtel()</code>, <code>flushOtel()</code>, <code>start*Span()</code>, <code>end*Span()</code></td></tr>
-        <tr><td>OTel Exporter</td><td><code>otel-exporter.ts</code></td><td><code>BufferSpanExporter</code></td></tr>
-        <tr><td>Constants</td><td><code>constants.ts</code></td><td><code>JUDGE_MODEL</code>, <code>SCRIPT_TIMEOUT_MS</code>, ...</td></tr>
+        <tr><td>Apify Datasets</td><td><code>apify-datasets.ts</code></td><td><code>downloadApifyDatasets()</code>, <code>extractDatasetIdsFromEvents()</code>, typ <code>DatasetDownloadResult</code></td></tr>
+        <tr><td>OTel</td><td><code>otel.ts</code></td><td><code>initOtel()</code>, <code>flushOtel()</code>, <code>startScenarioSpan()</code>, <code>startTestSpan()</code>, <code>startAgentSpan()</code>, <code>endAgentSpan()</code>, <code>startJudgeSpan()</code>, <code>endJudgeSpan()</code>, <code>endTestSpan()</code>, <code>endScenarioSpan()</code></td></tr>
+        <tr><td>OTel Exporter</td><td><code>otel-exporter.ts</code></td><td><code>BufferSpanExporter</code>, <code>spansToOtlpJson()</code>, typ <code>OtlpJsonData</code></td></tr>
+        <tr><td>Constants</td><td><code>constants.ts</code></td><td><code>JUDGE_MODEL</code>, <code>JUDGE_MODEL_MAP</code>, <code>SCRIPT_TIMEOUT_MS</code>, <code>INIT_SCRIPT_TIMEOUT_MS</code>, <code>JQ_TIMEOUT_MS</code>, <code>SILENCE_*_MS</code> ladder</td></tr>
     </tbody>
 </table>
 
@@ -949,11 +998,13 @@ npm install -g some-tool</code></pre>
     trajectory: <span class="type">TrajectoryMetrics</span>;
     judge: <span class="type">JudgeMetrics</span>;
     retryAttempts: <span class="type">number</span>;
-    stopReason: <span class="type">string</span>;         <span class="cmt">// 'end_turn' | 'max_turns' | 'budget_exceeded' | 'error'</span>
+    stopReason: <span class="type">string</span>;         <span class="cmt">// 'end_turn' | 'max_turns' | 'budget_exceeded' | 'error' | 'unknown'</span>
     exitCode: <span class="type">number</span> | <span class="kw">null</span>;
     aborted: <span class="type">boolean</span>;
     abortReason: <span class="type">string</span> | <span class="kw">null</span>;
     error: <span class="type">string</span> | <span class="kw">null</span>;
+    hungWarnings: <span class="type">HungWarning</span>[];   <span class="cmt">// periods of silence detected during the run</span>
+    shutdownReason: <span class="type">string</span> | <span class="kw">null</span>; <span class="cmt">// non-null when silence-escalation ladder killed the subprocess</span>
 }</code></pre>
     </div>
 </details>
@@ -963,7 +1014,9 @@ npm install -g some-tool</code></pre>
     <div class="content">
 <pre><code><span class="kw">type</span> <span class="type">VerdictValue</span> = <span class="str">'pass'</span> | <span class="str">'fail'</span> | <span class="str">'warning'</span> | <span class="str">'unclear'</span> | <span class="str">'platform_failure'</span>;
 
-<span class="kw">type</span> <span class="type">CheckType</span> = <span class="str">'contains'</span> | <span class="str">'regex'</span> | <span class="str">'json-schema'</span> | <span class="str">'script'</span> | <span class="str">'jq'</span> | <span class="str">'llm-judge'</span> | <span class="str">'error'</span>;
+<span class="kw">type</span> <span class="type">CheckType</span> = <span class="str">'contains'</span> | <span class="str">'regex'</span> | <span class="str">'json-schema'</span> | <span class="str">'script'</span> | <span class="str">'jq'</span> | <span class="str">'llm-judge'</span> | <span class="str">'eval-review'</span> | <span class="str">'error'</span>;
+
+<span class="kw">type</span> <span class="type">EvalGapSeverity</span> = <span class="str">'critical'</span> | <span class="str">'noncritical'</span> | <span class="str">'ok'</span>;
 
 <span class="kw">type</span> <span class="type">AgentType</span> = <span class="str">'claude-code'</span> | <span class="str">'codex'</span> | <span class="str">'opencode'</span>;</code></pre>
     </div>
@@ -977,7 +1030,8 @@ npm install -g some-tool</code></pre>
     checkValue: <span class="type">string</span>;
     verdict: <span class="type">VerdictValue</span>;
     evidence: <span class="type">string</span>;
-    evalCritique?: <span class="type">string</span>;   <span class="cmt">// LLM judge meta-critique</span>
+    evalCritique?: <span class="type">string</span>;             <span class="cmt">// llm-judge: meta-critique of the eval criterion</span>
+    evalGapSeverity?: <span class="type">EvalGapSeverity</span>;  <span class="cmt">// eval-review only: 'critical' | 'noncritical' | 'ok'</span>
 }</code></pre>
     </div>
 </details>
@@ -1002,6 +1056,28 @@ npm install -g some-tool</code></pre>
     meta: <span class="type">ScenarioMeta</span>;
     tests: <span class="type">TestCase</span>[];
     parseWarnings?: <span class="type">string</span>[];
+}</code></pre>
+    </div>
+</details>
+
+<details>
+    <summary>HungWarning</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">HungWarning</span> {
+    elapsedMs: <span class="type">number</span>;     <span class="cmt">// time since agent start when silence was detected</span>
+    silenceSecs: <span class="type">number</span>;   <span class="cmt">// how long the agent was silent</span>
+}</code></pre>
+<p>Generuje se ze silence-escalation ladderu (viz <a href="#constants">Konstanty</a>). Slouží k diagnostice zaseknutých runů.</p>
+    </div>
+</details>
+
+<details>
+    <summary>JudgeMetrics</summary>
+    <div class="content">
+<pre><code><span class="kw">interface</span> <span class="type">JudgeMetrics</span> {
+    judgeCostUsd: <span class="type">number</span>;     <span class="cmt">// vždy 0 — CLI judge nereportuje token cost zpět</span>
+    judgeLatencyMs: <span class="type">number</span>;   <span class="cmt">// wall-clock čas ve všech LLM judge callech pro daný run</span>
+    judgeTurns: <span class="type">number</span>;       <span class="cmt">// počet llm-judge verdicts v verdicts[] = počet ### Judge bloků</span>
 }</code></pre>
     </div>
 </details>
@@ -1069,8 +1145,8 @@ npm install -g some-tool</code></pre>
 
 <span class="kw">interface</span> <span class="type">JudgeSpec</span> {
     prompt: <span class="type">string</span>;
-    severity: <span class="str">'fail'</span> | <span class="str">'warning'</span>;
-    model?: <span class="type">string</span>;  <span class="cmt">// resolved from alias</span>
+    severity: <span class="str">'fail'</span> | <span class="str">'warning'</span> | <span class="str">'eval'</span>;  <span class="cmt">// 'eval' = ### eval-Judge (meta-eval, excluded from overall)</span>
+    model?: <span class="type">string</span>;  <span class="cmt">// resolved from alias (haiku/sonnet/opus) or full model ID</span>
 }</code></pre>
 
 <h4>judgeAllChecks(agentOutput, checkpoint, options?)</h4>
@@ -1083,14 +1159,21 @@ npm install -g some-tool</code></pre>
 </ol>
 
 <h4>LLM Judge backend (agents/claude.ts)</h4>
-<p><code>judgeLlm()</code> spouští Claude CLI jako subprocess:</p>
+<p><code>judgeLlm()</code> spouští Claude CLI jako subprocess s plným toolsetem (Read, Bash, Glob, …) &mdash; není to text classifier:</p>
 <pre><code>claude -p <span class="str">"{prompt}"</span> \
   --output-format stream-json \
   --verbose \
   --include-partial-messages \
-  --json-schema <span class="str">'{"verdict":"pass|fail|unclear","reasoning":"string"}'</span> \
-  --model <span class="str">claude-sonnet-4-6</span></code></pre>
-<p>Timeout: 5 min. Retry: max 2 pokusy s exponential backoff (1s, 2s). Fallback: <code>null</code> &rarr; verdict <code>unclear</code>.</p>
+  --json-schema <span class="str">'{...verdict schema...}'</span> \
+  --model <span class="str">claude-sonnet-4-6</span> \
+  --dangerously-skip-permissions \
+  --no-session-persistence</code></pre>
+<p><strong>Dvě schémata podle severity:</strong></p>
+<ul>
+    <li><code>fail</code>/<code>warning</code> Judge &rarr; <code>{verdict: "pass"|"fail"|"unclear", reasoning: string, eval_critique?: string}</code></li>
+    <li><code>eval</code> Judge (<code>### eval-Judge</code>) &rarr; <code>{eval_gap_severity: "critical"|"noncritical"|"ok", reasoning: string}</code> &rarr; produkuje <code>CheckVerdict</code> s <code>checkType: 'eval-review'</code>, vyloučen z <code>computeOverall</code>.</li>
+</ul>
+<p>Timeout: 5 min soft budget (<code>JUDGE_TIMEOUT_MS</code>), žádný max-turns limit. Retry: max 2 pokusy s exponential backoff (1s, 2s). Fallback: <code>null</code> &rarr; verdict <code>unclear</code>.</p>
 
 <h2 id="agent-registry">Agent registry</h2>
 <pre><code><span class="kw">interface</span> <span class="type">AgentDef</span> {
@@ -1120,7 +1203,7 @@ npm install -g some-tool</code></pre>
         <tr><td>Tool calls</td><td><code>tool_use</code> content blocks</td><td>Název + truncated input</td></tr>
         <tr><td>Files created</td><td><code>Write</code> tool calls + Bash regex</td><td><code>&gt;</code>, <code>&gt;&gt;</code>, <code>tee</code>, <code>cp</code>, <code>mv</code></td></tr>
         <tr><td>Files modified</td><td><code>Edit</code> tool calls</td><td>&mdash;</td></tr>
-        <tr><td>Commands</td><td><code>Bash</code> tool calls</td><td>Raw command string (max 200 chars)</td></tr>
+        <tr><td>Commands</td><td><code>Bash</code> tool calls</td><td>Raw command string (bez truncation v <code>commandsExecuted</code>; <code>toolCallDetails[].input</code> je truncated samostatně)</td></tr>
         <tr><td>MCP tools</td><td>Tool calls s <code>mcp__</code> prefix</td><td>&mdash;</td></tr>
         <tr><td>Error recovery</td><td><code>tool_use</code> po <code>tool_result</code> s <code>is_error</code></td><td>Inkrementace counteru</td></tr>
         <tr><td>Planning vs execution</td><td>Turny bez/s tool calls</td><td>&mdash;</td></tr>
@@ -1130,17 +1213,21 @@ npm install -g some-tool</code></pre>
 <h2 id="otel">OTel instrumentace</h2>
 <h3>Span hierarchie</h3>
 <pre><code>scenario_run
-├── gen_ai.workflow.name, gen_ai.provider.name, gen_ai.request.model
+├── <span class="cmt">attributes: gen_ai.workflow.name, gen_ai.provider.name, gen_ai.request.model</span>
 ├── test_0
 │   ├── invoke_agent
-│   │   <span class="cmt">attributes: inputTokens, outputTokens, cacheTokens, numTurns, cost, duration</span>
-│   │   <span class="cmt">events: tool_call (name, turn)</span>
+│   │   <span class="cmt">attributes: gen_ai.usage.{input,output}_tokens, gen_ai.usage.cache_read.input_tokens,</span>
+│   │   <span class="cmt">            gen_ai.usage.cache_creation.input_tokens, gen_ai.response.finish_reasons,</span>
+│   │   <span class="cmt">            eval.tool_call_count, eval.cost_usd, eval.duration_ms</span>
+│   │   <span class="cmt">events: tool_call (gen_ai.tool.name, eval.turn)</span>
 │   └── judge_evaluation
-│       <span class="cmt">attributes: checkCount, overallVerdict, latencyMs</span>
-│       <span class="cmt">events: check_verdict (checkType, verdict, confidence, evidence)</span>
+│       <span class="cmt">attributes: eval.check_count, eval.overall_verdict, eval.latency_ms</span>
+│       <span class="cmt">events: check_verdict (gen_ai.evaluation.name, gen_ai.evaluation.score.label,</span>
+│       <span class="cmt">                       gen_ai.evaluation.explanation)</span>
 └── test_1
     └── ...</code></pre>
 
+<p>GenAI Semantic Conventions (<code>gen_ai.*</code>) pro standardní atributy, custom <code>eval.*</code> pro zbytek.</p>
 <p><strong>Export:</strong> OTLP JSON do KV store (<code>OTEL-TRACE</code>). Kompatibilní s AgentPrism, Jaeger, Langfuse OTLP endpoint.</p>
 <p><strong>Implementace:</strong> <code>BufferSpanExporter</code> (in-memory, bez serveru) &rarr; <code>NodeTracerProvider</code> &rarr; service name <code>"apify-evals-runner"</code>.</p>
 
@@ -1158,15 +1245,18 @@ npm install -g some-tool</code></pre>
             <td><strong>Runtime</strong></td>
             <td><code>apify/actor-node:24</code></td>
             <td>
-                System: curl, bash, git, jq, yq, python3, zip, unzip<br>
-                Agents: Claude Code, Codex, OpenCode, Apify CLI<br>
-                Compiled runner + shared
+                System (apk add): curl, bash, git, openssh-client, jq, yq, python3, py3-pip, build-base, wget, ca-certificates, zip, unzip<br>
+                Agents: Claude Code (curl installer), OpenCode (curl installer), Codex + Apify CLI (npm install -g)<br>
+                Compiled runner + shared (skopírováno z builder stage)
             </td>
         </tr>
     </tbody>
 </table>
-<p><strong>Security:</strong> Runner code owned by root (read-only). Agent workspace v <code>/tmp/eval-workspace-*</code> (writable).</p>
-<p><strong>Deploy:</strong> <code>apify push --dir actors/runner</code> (<code>actor.json</code> má <code>dockerContextDir: "../../.."</code>)</p>
+<p><strong>Security:</strong> Runner code je v image vlastněn rootem (read-only), agent workspace běží v <code>/tmp/eval-workspace-*</code> (writable jako <code>myuser</code>).</p>
+<p><strong>Deploy z monorepo rootu</strong> (<code>actor.json</code> má <code>dockerContextDir: "../../.."</code>, takže docker context = monorepo root):</p>
+<pre><code><span class="cmt"># aktualizovat mtime — jinak CLI hlásí "modified there since modified locally"</span>
+touch actors/runner/.actor/actor.json
+apify push --dir .</code></pre>
 
 <h2 id="tests">Testy</h2>
 <pre><code><span class="cmt"># Unit testy</span>
@@ -1185,22 +1275,38 @@ cd shared && npx vitest run src/__tests__/integration*</code></pre>
         <tr><td><code>log-masker.test.ts</code></td><td>Unit</td><td>Secret masking</td></tr>
         <tr><td><code>init-presets.test.ts</code></td><td>Unit</td><td>Preset initialization</td></tr>
         <tr><td><code>agent-parsers.test.ts</code></td><td>Unit</td><td>Agent NDJSON event parsing</td></tr>
-        <tr><td><code>scenario-files.test.ts</code></td><td>Validation</td><td>Parsuje všech 24 scénářů</td></tr>
+        <tr><td><code>scenario-files.test.ts</code></td><td>Validation</td><td>Parsuje všechny markdown scénáře v <code>scenarios/</code> (kontrola, že nic neshodí parser)</td></tr>
         <tr><td><code>example-inputs.test.ts</code></td><td>Validation</td><td>Validuje example JSON vstupy</td></tr>
         <tr><td><code>integration*.test.ts</code></td><td>Integration</td><td>Reálný agent + judging</td></tr>
     </tbody>
 </table>
 
 <h2 id="constants">Konstanty</h2>
+<h3><code>shared/src/constants.ts</code></h3>
 <pre><code><span class="kw">export const</span> JUDGE_MODEL = <span class="str">'claude-sonnet-4-6'</span>;
-<span class="kw">export const</span> JUDGE_MODEL_MAP = {
+<span class="kw">export const</span> JUDGE_MODEL_MAP: <span class="type">Record</span>&lt;<span class="type">string</span>, <span class="type">string</span>&gt; = {
     haiku: <span class="str">'claude-haiku-4-5-20251001'</span>,
     sonnet: <span class="str">'claude-sonnet-4-6'</span>,
     opus: <span class="str">'claude-opus-4-6'</span>,
 };
-<span class="kw">export const</span> SCRIPT_TIMEOUT_MS = <span class="num">60_000</span>;       <span class="cmt">// script checkpoint timeout</span>
-<span class="kw">export const</span> INIT_SCRIPT_TIMEOUT_MS = <span class="num">300_000</span>; <span class="cmt">// init bash script timeout</span>
-<span class="kw">export const</span> JQ_TIMEOUT_MS = <span class="num">30_000</span>;           <span class="cmt">// jq checkpoint timeout</span></code></pre>
+<span class="kw">export const</span> SCRIPT_TIMEOUT_MS = <span class="num">60_000</span>;       <span class="cmt">// script checkpoint timeout (60s)</span>
+<span class="kw">export const</span> INIT_SCRIPT_TIMEOUT_MS = <span class="num">300_000</span>; <span class="cmt">// init bash script timeout (5 min)</span>
+<span class="kw">export const</span> JQ_TIMEOUT_MS = <span class="num">30_000</span>;           <span class="cmt">// jq checkpoint timeout (30s)</span>
+
+<span class="cmt">// Silence-escalation ladder pro agent subprocess. Triggeruje pouze pokud žádný</span>
+<span class="cmt">// tool není rozjetý (apify nested actor calls / long bash legitimně trvají minuty).</span>
+<span class="cmt">// Notice/warn rungs jsou advisory (log + zápis do hungWarnings); SIGTERM je první</span>
+<span class="cmt">// destruktivní akce.</span>
+<span class="kw">export const</span> SILENCE_NOTICE_MS = <span class="num">30_000</span>;             <span class="cmt">// 30s — advisory log</span>
+<span class="kw">export const</span> SILENCE_WARN1_MS = <span class="num">40_000</span>;              <span class="cmt">// 40s — advisory log + hungWarning</span>
+<span class="kw">export const</span> SILENCE_WARN2_MS = <span class="num">50_000</span>;              <span class="cmt">// 50s — advisory log + hungWarning</span>
+<span class="kw">export const</span> SILENCE_SIGTERM_MS = <span class="num">60_000</span>;            <span class="cmt">// 60s — pošle SIGTERM, nastaví shutdownReason</span>
+<span class="kw">export const</span> SILENCE_SIGKILL_GRACE_MS = <span class="num">10_000</span>;       <span class="cmt">// 10s po SIGTERM, pak SIGKILL</span>
+<span class="kw">export const</span> SILENCE_FORCE_RESOLVE_GRACE_MS = <span class="num">5_000</span>;  <span class="cmt">// 5s po SIGKILL na vyčištění promise</span>
+<span class="kw">export const</span> SILENCE_CHECK_INTERVAL_MS = <span class="num">5_000</span>;       <span class="cmt">// jak často kontrolovat ticho</span></code></pre>
+
+<h3><code>shared/src/agents/claude.ts</code> (lokální konstanta v judge backendu)</h3>
+<pre><code><span class="kw">const</span> JUDGE_TIMEOUT_MS = <span class="num">5</span> * <span class="num">60</span> * <span class="num">1000</span>; <span class="cmt">// 5 min soft budget per judge call</span></code></pre>
 
 </main>
 
