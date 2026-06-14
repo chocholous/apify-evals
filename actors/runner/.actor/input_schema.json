@@ -93,7 +93,7 @@
             "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables.",
             "editor": "json",
             "nullable": true,
-            "prefill": {
+            "example": {
                 "mcpServers": {
                     "apify": {
                         "command": "npx",
