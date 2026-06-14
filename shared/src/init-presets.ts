@@ -81,8 +81,27 @@ export function runInitPreset(ctx: InitContext): InitResult {
         }
 
         case 'none':
-        default:
+        default: {
+            // The loose default: emits PATH diagnostics for the common tools
+            // (apify, gh, curl, jq) and — if mcpConfigJson is provided — wires
+            // it up alongside. Always safe to use; gives the agent everything
+            // it would normally have, with visibility into what's available.
+            const script = `
+                which apify >/dev/null 2>&1 || echo "apify CLI not found (install with: npm i -g apify-cli)"
+                which gh >/dev/null 2>&1 || echo "gh not found (install with: brew install gh)"
+                which curl >/dev/null 2>&1 || echo "curl not found (required for REST API calls)"
+                which jq >/dev/null 2>&1 || echo "jq not found (recommended for parsing API responses)"
+            `;
+            const result = runScript(script, ctx.workDir, 'none');
+            log.push(`none: ${result.output}`);
+
+            if (ctx.mcpConfigJson) {
+                mcpConfigPath = writeMcpConfig(ctx.workDir, ctx.mcpConfigJson);
+                strictMcpConfig = true;
+                log.push(`none: wrote MCP config to ${mcpConfigPath}`);
+            }
             break;
+        }
     }
 
     if (ctx.customScript) {

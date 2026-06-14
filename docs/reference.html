@@ -675,8 +675,8 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
     <tbody>
         <tr>
             <td><code>none</code></td>
-            <td>Built-in only</td>
-            <td>Žádná speciální inicializace</td>
+            <td>Built-in + optional MCP</td>
+            <td>Ověří dostupnost <code>apify</code>/<code>gh</code>/<code>curl</code>/<code>jq</code> v PATH a volitelně zapíše <code>mcpConfigJson</code> do <code>.eval-config/mcp-config.json</code> (pokud je zadán)</td>
         </tr>
         <tr>
             <td><code>mcp_native</code></td>

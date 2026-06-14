@@ -16,11 +16,27 @@ describe('runInitPreset', () => {
         rmSync(workDir, { recursive: true, force: true });
     });
 
-    it('none preset does nothing', () => {
+    it('none preset runs diagnostic probes without writing MCP config', () => {
         const result = runInitPreset({ preset: 'none', workDir });
         expect(result.mcpConfigPath).toBeNull();
         expect(result.strictMcpConfig).toBe(false);
-        expect(result.presetLog).toHaveLength(0);
+        expect(result.presetLog).toHaveLength(1);
+        expect(result.presetLog[0]).toContain('none:');
+    });
+
+    it('none preset with mcpConfigJson writes MCP config', () => {
+        const mcpConfig = { mcpServers: { test: { command: 'echo', args: ['hi'] } } };
+        const result = runInitPreset({ preset: 'none', mcpConfigJson: mcpConfig, workDir });
+        // Two log lines: tool-availability probes, then the MCP config write.
+        expect(result.presetLog.length).toBe(2);
+        expect(result.presetLog[0]).toContain('none:');
+        expect(result.presetLog[1]).toContain('none:');
+        expect(result.presetLog[1]).toContain('wrote MCP config');
+        expect(result.mcpConfigPath).toBeTruthy();
+        expect(result.strictMcpConfig).toBe(true);
+        expect(existsSync(result.mcpConfigPath!)).toBe(true);
+        const written = JSON.parse(readFileSync(result.mcpConfigPath!, 'utf-8'));
+        expect(written.mcpServers.test.command).toBe('echo');
     });
 
     it('mcp_native writes config and enables strict mode', () => {
@@ -67,8 +83,10 @@ describe('runInitPreset', () => {
             customScript: 'echo "custom-init-ok"',
             workDir,
         });
-        expect(result.presetLog).toHaveLength(1);
-        expect(result.presetLog[0]).toContain('custom: OK');
+        // `none` now emits one diagnostic line, then `custom: OK`.
+        expect(result.presetLog).toHaveLength(2);
+        expect(result.presetLog[0]).toContain('none:');
+        expect(result.presetLog[1]).toContain('custom: OK');
     });
 
     it('custom script failure is logged', () => {
@@ -77,8 +95,11 @@ describe('runInitPreset', () => {
             customScript: 'exit 1',
             workDir,
         });
-        expect(result.presetLog[0]).toContain('custom:');
-        expect(result.presetLog[0]).toContain('failed');
+        // `none` diagnostics first, then the failing custom-script log entry.
+        expect(result.presetLog).toHaveLength(2);
+        expect(result.presetLog[0]).toContain('none:');
+        expect(result.presetLog[1]).toContain('custom:');
+        expect(result.presetLog[1]).toContain('failed');
     });
 
     it('preset + custom script both run', () => {

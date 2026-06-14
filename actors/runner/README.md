@@ -176,12 +176,14 @@ Presets configure what tools the agent has access to:
 
 | Preset | What the agent gets |
 |--------|-------------------|
-| None | No special tools — agent uses only built-in capabilities |
+| None | No special tools — logs availability of apify/gh/curl/jq and writes mcpConfigJson if provided |
 | MCP Native | MCP servers defined in your config JSON (Apify, GitHub, etc.) |
 | CLI Native | Command-line tools (gh, apify-cli) |
 | mcpc | MCP servers accessed via mcpc CLI bridge |
 
-Choose different presets to compare how the same agent performs with different tool setups.
+Choose different presets to compare how the same agent performs with different tool setups. `None` is the loose default — it doesn't restrict anything, just emits PATH diagnostics and wires up `mcpConfigJson` if you supply it.
+
+> **Note:** like all presets, these are *signals*, not sandboxes — they log tool availability and (when applicable) write MCP config alongside, but they don't restrict what the agent can do. The agent's Docker image still has `apify-cli` regardless of preset choice.
 
 ### MCP Config JSON example
 

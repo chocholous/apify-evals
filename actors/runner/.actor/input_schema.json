@@ -69,10 +69,10 @@
         "initPreset": {
             "title": "Tool Setup Preset",
             "type": "string",
-            "description": "Configures what tools the agent has access to. Use different presets to compare MCP vs CLI performance on the same scenario.",
+            "description": "Configures what tools the agent has access to. Use different presets to compare MCP vs CLI performance on the same scenario. 'None' is a safe default that logs which CLI tools are available and wires up mcpConfigJson if provided.",
             "enum": ["none", "mcp_native", "cli_native", "mcpc"],
             "enumTitles": [
-                "None — agent uses only built-in capabilities",
+                "None — built-in capabilities + tool-availability diagnostics (writes MCP config if provided)",
                 "MCP Native — agent gets MCP servers from config JSON",
                 "CLI Native — agent uses command-line tools (gh, apify-cli)",
                 "mcpc — MCP servers via mcpc CLI bridge"
