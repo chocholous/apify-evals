@@ -1,5 +1,5 @@
 export { parseScenario, ScenarioParseError } from './scenario-parser.js';
-export { runAgent, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from './agents/run.js';
+export { runAgent, applyPromptPrefix, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from './agents/run.js';
 export { getAgentDef, buildAgentArgs, AGENT_REGISTRY } from './agents/registry.js';
 export { judgeAllChecks, parseCheckpointSection } from './judge.js';
 export { formatCost, formatDuration } from './metrics.js';
