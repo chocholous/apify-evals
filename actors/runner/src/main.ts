@@ -295,13 +295,21 @@ for (let i = 0; i < tests.length; i++) {
         }));
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
         for (const v of judgeResult.verdicts) {
+            let header: string;
             if (v.checkType === 'eval-review') {
                 const gap = v.evalGapSeverity ?? 'noncritical';
                 const icon = gap === 'ok' ? '✓' : gap === 'critical' ? '✗' : '⚠';
-                log.info(`    ${icon} eval-review: ${gap} — ${v.evidence.slice(0, 80)}`);
+                header = `    ${icon} eval-review: ${gap}`;
             } else {
                 const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
-                log.info(`    ${icon} ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+                header = `    ${icon} ${v.checkType}: ${v.verdict}`;
+            }
+            log.info(header);
+            const evidence = (v.evidence ?? '').trim();
+            if (evidence) {
+                for (const line of evidence.split('\n')) {
+                    log.info(`        ${line}`);
+                }
             }
         }
 
