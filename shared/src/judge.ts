@@ -145,6 +145,40 @@ export interface ScriptJudgeOptions {
     events?: unknown[];
 }
 
+// Mirror of the same list in shared/src/agents/run.ts — kept inline to avoid
+// cross-module deps. If you add to one, update the other. See FINDINGS.md F11.
+// Without this scrub, script/jq check subprocesses inherit the runner's Apify
+// runtime vars and any actor they spawn (e.g. `apify run` in T2) writes to the
+// runner's own cloud dataset rather than local workspace storage.
+const APIFY_RUNTIME_KEYS_TO_STRIP = [
+    'APIFY_DEFAULT_DATASET_ID',
+    'APIFY_DEFAULT_KEY_VALUE_STORE_ID',
+    'APIFY_DEFAULT_REQUEST_QUEUE_ID',
+    'APIFY_ACTOR_RUN_ID',
+    'APIFY_ACTOR_ID',
+    'APIFY_ACTOR_BUILD_ID',
+    'APIFY_ACTOR_BUILD_NUMBER',
+    'APIFY_ACTOR_TASK_ID',
+    'APIFY_INPUT_KEY',
+    'APIFY_TIMEOUT_AT',
+    'APIFY_ACTOR_EVENTS_WS_URL',
+    'APIFY_PROXY_PASSWORD',
+] as const;
+
+function buildScriptEnv(extraEnv: Record<string, string> | undefined, workDir: string | undefined): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = extraEnv ? { ...process.env, ...extraEnv } : { ...process.env };
+    for (const k of APIFY_RUNTIME_KEYS_TO_STRIP) delete env[k];
+    if (workDir && !env.APIFY_LOCAL_STORAGE_DIR) {
+        env.APIFY_LOCAL_STORAGE_DIR = `${workDir}/storage`;
+    }
+    return env;
+}
+
+function buildEvidence(stdout: string, stderr: string, fallback: string): string {
+    if (stdout && stderr) return `${stdout}\n\n--- stderr ---\n${stderr}`;
+    return stdout || stderr || fallback;
+}
+
 function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions, failVerdict: VerdictValue = 'fail'): CheckVerdict {
     const timeoutMs = options?.timeoutMs ?? SCRIPT_TIMEOUT_MS;
     try {
@@ -154,7 +188,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: options?.env ? { ...process.env, ...options.env } : process.env,
+            env: buildScriptEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence };
@@ -163,7 +197,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
         if (error.status !== undefined && error.status !== null) {
             const stdout = error.stdout?.toString().trim() ?? '';
             const stderr = error.stderr?.toString().trim() ?? '';
-            const evidence = stdout || stderr || `Script exited with code ${error.status}`;
+            const evidence = buildEvidence(stdout, stderr, `Script exited with code ${error.status}`);
             return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence };
         }
         const msg = error.message ?? String(err);
@@ -186,7 +220,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: options?.env ? { ...process.env, ...options.env } : process.env,
+            env: buildScriptEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'jq expression returned truthy';
         return { checkType: 'jq', checkValue: expression, verdict: 'pass', evidence };
@@ -195,7 +229,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
         if (error.status !== undefined && error.status !== null) {
             const stdout = error.stdout?.toString().trim() ?? '';
             const stderr = error.stderr?.toString().trim() ?? '';
-            const evidence = stderr || stdout || `jq exited with code ${error.status}`;
+            const evidence = buildEvidence(stdout, stderr, `jq exited with code ${error.status}`);
             return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence };
         }
         const msg = error.message ?? String(err);
