@@ -121,6 +121,8 @@ export interface JudgeMetrics {
 export interface AgentResult {
     agent: string;
     model: string;
+    /** The initPreset value used for this run (e.g. 'cli_only', 'mcp_only'). Populated by the runner; absent on synthesized error results. */
+    initPreset?: string;
     scenarioName: string;
     testIndex: number;
     testPrompt: string;

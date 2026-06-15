@@ -49,6 +49,8 @@ export function startScenarioSpan(tracer: Tracer, opts: {
     agent: string;
     model: string;
     testsTotal: number;
+    /** The initPreset value used for this scenario (e.g. 'cli_only', 'mcp_only'). Emitted as the `eval.init_preset` span attribute so cross-preset runs are distinguishable in traces. */
+    initPreset?: string;
 }): Span {
     return tracer.startSpan('scenario_run', {
         kind: SpanKind.INTERNAL,
@@ -57,6 +59,7 @@ export function startScenarioSpan(tracer: Tracer, opts: {
             'gen_ai.provider.name': opts.agent,
             'gen_ai.request.model': opts.model,
             'eval.tests_total': opts.testsTotal,
+            'eval.init_preset': opts.initPreset,
         },
     });
 }

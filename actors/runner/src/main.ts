@@ -44,12 +44,15 @@ const agent = input.agent ?? 'claude-code';
 const maxRetries = input.maxRetries ?? 0;
 const maxTurns = input.maxTurns ?? 10;
 
+const preset = (input.initPreset ?? 'none') as PresetName;
+
 const tracer = initOtel();
 const scenarioSpan = startScenarioSpan(tracer, {
     scenarioName: meta.name,
     agent,
     model: input.model ?? 'default',
     testsTotal: tests.length,
+    initPreset: preset,
 });
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
@@ -62,7 +65,6 @@ const workspaceDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
 mkdirSync(workspaceDir, { recursive: true });
 log.info(`Workspace: ${workspaceDir}`);
 
-const preset = (input.initPreset ?? 'none') as PresetName;
 const initResult = runInitPreset({
     preset,
     customScript: input.initBashScript,
@@ -356,6 +358,7 @@ for (let i = 0; i < tests.length; i++) {
     const agentResult: AgentResult = {
         agent,
         model: input.model ?? 'default',
+        initPreset: preset,
         scenarioName: meta.name,
         testIndex: i,
         testPrompt: test.test,

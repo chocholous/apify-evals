@@ -1,6 +1,8 @@
 import { writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 
 import type { TrajectoryMetrics } from './types.js';
 
@@ -89,15 +91,21 @@ function runScript(script: string, workDir: string, label: string): { success: b
 }
 
 /**
- * Create a PATH-shim directory inside `workDir` with no-op shims for each
- * given tool. Each shim prints an error to stderr and exits 127, mimicking
- * "command not found" semantics. Returns the absolute directory path; the
- * caller must prepend this to the agent subprocess's PATH for it to take
- * effect — exporting PATH inside an init script doesn't propagate to the
- * agent's subprocess, since each `runScript` runs in its own subshell.
+ * Create a PATH-shim directory with no-op shims for each given tool. Each shim
+ * prints an error to stderr and exits 127, mimicking "command not found"
+ * semantics. Returns the absolute directory path; the caller must prepend this
+ * to the agent subprocess's PATH for it to take effect — exporting PATH inside
+ * an init script doesn't propagate to the agent's subprocess, since each
+ * `runScript` runs in its own subshell.
+ *
+ * Shim lives outside the agent's writable workspace (under the OS tmpdir with
+ * a per-call random UUID suffix) so the agent can't `rm -rf .eval-shim` to
+ * disarm it. The `workDir` parameter is retained for backward-compatible
+ * signature but is intentionally unused for the shim path itself.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function setupPathShim(workDir: string, tools: string[], preset: PresetName, allowedSurface: string): string {
-    const shimDir = join(workDir, '.eval-shim');
+    const shimDir = join(tmpdir(), `eval-shim-${randomUUID()}`);
     mkdirSync(shimDir, { recursive: true });
     for (const tool of tools) {
         const shimPath = join(shimDir, tool);
@@ -128,11 +136,19 @@ exit 127
 // to a stored URL), but they reliably catch the obvious leak patterns.
 // ---------------------------------------------------------------------------
 
-const REGEX_APIFY_CLI = /(?:^|[\s;|&(])apify(?:-cli)?(?:\s|$)/;
-const REGEX_CURL_OR_WGET = /(?:^|[\s;|&(])(?:curl|wget)(?:\s|$)/;
+// Catches absolute (`/usr/local/bin/apify`), relative (`./bin/apify`), and bare
+// (`apify`) invocations. The `(?:[\w./-]*\/)?` segment allows an optional
+// path-with-slashes prefix or nothing at all.
+const REGEX_APIFY_CLI = /(?:^|[\s;|&(])(?:[\w./-]*\/)?apify(?:-cli)?(?:\s|$)/;
+const REGEX_CURL_OR_WGET = /(?:^|[\s;|&(])(?:[\w./-]*\/)?(?:curl|wget)(?:\s|$)/;
 const REGEX_APIFY_HOST = /api\.apify\.com/i;
-const REGEX_NODE_HTTP_EVAL = /\bnode\b.*(?:fetch\(|http\.|https\.)/;
-const REGEX_PYTHON_HTTP_EVAL = /\b(?:python|python3)\b.*(?:requests\.|http\.client|urllib|httpx)/;
+// Catches inline -e/-c invocations and `<runtime> <file>` only when the
+// HTTP-library substring appears in the bash command. File-execution where the
+// HTTP library is INSIDE the script file (not in the bash command) is not
+// detected by pattern-matching — that would require content scanning.
+// Documented as a known gap; an egress firewall is the complete solution.
+const REGEX_NODE_HTTP_EVAL = /\b(?:node|bun|deno|tsx|ts-node)\b.*(?:fetch\(|http\.|https\.)/;
+const REGEX_PYTHON_HTTP_EVAL = /\b(?:python|python3|python3\.\d+|pypy)\b.*(?:requests\.|http\.client|urllib|httpx)/;
 
 const REJECT_APIFY_CLI_VIA_BASH: TrajectoryReject = {
     name: 'no-cli-surface',

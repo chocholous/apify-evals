@@ -221,6 +221,68 @@ describe('runInitPreset', () => {
             expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebSearch'] }))).toBe(true);
             expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['Bash', 'Read'] }))).toBe(false);
         });
+
+        // B1 lock-in: absolute-path apify regex
+        it('REJECT_APIFY_CLI_VIA_BASH catches absolute-path /usr/local/bin/apify invocation', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const cliReject = result.trajectoryRejects.find((r) => r.name === 'no-cli-surface');
+            expect(cliReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/local/bin/apify deploy --token X'] }))).toBe(true);
+        });
+
+        // B1 lock-in: absolute-path curl regex
+        it('REJECT_REST_VIA_SHELL catches absolute-path /usr/bin/curl', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://example.com'] }))).toBe(true);
+        });
+
+        // B1 lock-in: relative-path curl regex
+        it('REJECT_REST_VIA_SHELL catches ./bin/curl with relative path', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://example.com'] }))).toBe(true);
+        });
+
+        // B2 lock-in: shim is OUTSIDE workDir so the agent can't rm -rf to disarm
+        it('PATH shim directory is NOT under workDir (lives outside agent cwd)', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            expect(result.pathPrefix).toBeTruthy();
+            expect(result.pathPrefix!.startsWith(workDir)).toBe(false);
+        });
+
+        // B3 lock-in: alternate JS runtime (bun)
+        it('REJECT_REST_VIA_SHELL catches bun run /tmp/x.ts with fetch( in command', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['bun run /tmp/x.ts && fetch(url)'] }))).toBe(true);
+        });
+
+        // B3 lock-in: alternate JS runtime (deno) with http.
+        it('REJECT_REST_VIA_SHELL catches deno run --allow-net /tmp/x.ts with http.', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['deno run --allow-net /tmp/x.ts http.request'] }))).toBe(true);
+        });
+
+        // B3 lock-in: versioned python with requests.
+        it('REJECT_REST_VIA_SHELL catches python3.11 -c with requests.get', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['python3.11 -c "import requests; requests.get(url)"'] }))).toBe(true);
+        });
+
+        // B3 KNOWN GAP: file-execution where HTTP library is inside the script file
+        // (not the bash command) evades regex-based detection. The complete solution
+        // is an egress firewall — documented inline in init-presets.ts.
+        // (Skipped: serves as documentation; vitest's it.skip leaves a clear marker.)
+        it.skip('KNOWN GAP: file-execution without inline HTTP substring evades regex — needs content scan or egress firewall', () => {});
+
+        // Mixed-trajectory: guards against a future .some() -> .every() regression.
+        it('reject still fires when forbidden command is interleaved with allowed ones', () => {
+            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['npm install', 'mkdir x', 'curl https://api.apify.com'] }))).toBe(true);
+        });
     });
 
     describe('cli_only', () => {
@@ -256,6 +318,37 @@ describe('runInitPreset', () => {
             expect(mcpReject!.predicate(makeTrajectory({ mcpToolsUsed: ['apify_call_actor'] }))).toBe(true);
             expect(mcpReject!.predicate(makeTrajectory({ mcpToolsUsed: [] }))).toBe(false);
         });
+
+        // B1 lock-in: absolute-path curl under cli_only
+        it('REJECT_REST_VIA_SHELL catches absolute-path /usr/bin/curl', () => {
+            const result = runInitPreset({ preset: 'cli_only', workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://api.apify.com/v2/users/me'] }))).toBe(true);
+        });
+
+        // B1 lock-in: relative-path curl under cli_only
+        it('REJECT_REST_VIA_SHELL catches ./bin/curl with relative path', () => {
+            const result = runInitPreset({ preset: 'cli_only', workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://example.com'] }))).toBe(true);
+        });
+
+        // B2 lock-in: shim is OUTSIDE workDir under cli_only
+        it('PATH shim directory is NOT under workDir (lives outside agent cwd)', () => {
+            const result = runInitPreset({ preset: 'cli_only', workDir });
+            expect(result.pathPrefix).toBeTruthy();
+            expect(result.pathPrefix!.startsWith(workDir)).toBe(false);
+        });
+
+        // Previously-uncovered reject predicates: both REST-via-shell and REST-via-builtin
+        // are registered under cli_only but lacked direct trajectory coverage.
+        it('cli_only trajectory rejects detect REST via curl and WebFetch', () => {
+            const result = runInitPreset({ preset: 'cli_only', workDir });
+            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
+            const builtinReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-builtin-tools');
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl https://api.apify.com'] }))).toBe(true);
+            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebFetch'] }))).toBe(true);
+        });
     });
 
     describe('api_only', () => {
@@ -284,6 +377,30 @@ describe('runInitPreset', () => {
             });
             expect(result.mcpConfigPath).toBeNull();
             expect(result.presetLog.some((m) => m.includes('IGNORED'))).toBe(true);
+        });
+
+        // B1 lock-in: absolute-path apify under api_only
+        it('REJECT_APIFY_CLI_VIA_BASH catches absolute-path /usr/local/bin/apify invocation', () => {
+            const result = runInitPreset({ preset: 'api_only', workDir });
+            const cliReject = result.trajectoryRejects.find((r) => r.name === 'no-cli-surface');
+            expect(cliReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/local/bin/apify deploy --token X'] }))).toBe(true);
+        });
+
+        // B2 lock-in: shim is OUTSIDE workDir under api_only
+        it('PATH shim directory is NOT under workDir (lives outside agent cwd)', () => {
+            const result = runInitPreset({ preset: 'api_only', workDir });
+            expect(result.pathPrefix).toBeTruthy();
+            expect(result.pathPrefix!.startsWith(workDir)).toBe(false);
+        });
+
+        // Previously-uncovered reject predicates: no-cli-surface and no-mcp-surface
+        // are registered under api_only but lacked direct trajectory coverage.
+        it('api_only trajectory rejects detect CLI via Bash and MCP tool use', () => {
+            const result = runInitPreset({ preset: 'api_only', workDir });
+            const cliReject = result.trajectoryRejects.find((r) => r.name === 'no-cli-surface');
+            const mcpReject = result.trajectoryRejects.find((r) => r.name === 'no-mcp-surface');
+            expect(cliReject!.predicate(makeTrajectory({ commandsExecuted: ['apify push'] }))).toBe(true);
+            expect(mcpReject!.predicate(makeTrajectory({ mcpToolsUsed: ['some-mcp-tool'] }))).toBe(true);
         });
     });
 
