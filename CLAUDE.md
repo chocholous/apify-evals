@@ -248,9 +248,22 @@ interface CheckVerdict {
 ## Init presets (`shared/src/init-presets.ts`)
 
 Presets konfigurují **prostředí agenta** (ne vyhodnocení):
+**`*_native` presety (signal-only — surface dostupný, ostatní NEJSOU omezeny):**
 - `mcp_native` — zapíše MCP config JSON do `.eval-config/mcp-config.json`, předá `--mcp-config` + `--strict-mcp-config`
 - `cli_native` — ověří dostupnost CLI nástrojů (gh, apify-cli)
 - `mcpc` — zkontroluje mcpc, volitelně zapíše MCP config
+- `api_native` — ověří `curl`/`jq` pro raw HTTPS volání proti `api.apify.com`
+
+**`*_only` presety (vynucená exkluzivita pomocí PATH shim + MCP gating + trajectory hard-reject):**
+- `mcp_only` — agent může používat POUZE MCP. `apify`/`curl`/`wget` shimnuté na PATH; built-in `WebFetch`/`WebSearch` zamítnuty v trajectory; vyžaduje `mcpConfigJson` (jinak agent nemá žádnou surface a selže záměrně).
+- `cli_only` — agent může používat POUZE apify-cli. `curl`/`wget` shimnuté; MCP config se nezapisuje (žádné MCP servery); `WebFetch`/`WebSearch` a jakékoli MCP volání zamítnuto.
+- `api_only` — agent může používat POUZE REST API přes `curl` / built-in fetch. `apify` shimnuté; MCP config se nezapisuje; jakékoli volání apify-cli nebo MCP nástroje zamítnuto.
+
+Enforcement běží ve třech vrstvách (defense in depth, viz `actors/runner/README.md`):
+1. **PATH shim** — runner zapíše shim binárky do `${workDir}/.eval-shim/` a tuto cestu přidá na začátek PATH agentova subprocessu. Přímé volání disallowed nástroje vrátí exit 127.
+2. **MCP config gating** — pro `cli_only`/`api_only` se `--mcp-config` agentu vůbec nepředá (žádné MCP servery se nenačtou).
+3. **Trajectory hard-reject** — runner po doběhnutí agenta inspekuje znormalizovanou trajectory (`commandsExecuted`, `uniqueToolsUsed`, `mcpToolsUsed`) proti preset-specific rejection rules a přidá `preset-trajectory` verdicty. Agent-agnostic — funguje pro všechny podporované agenty, ne jen pro claude-code.
+
 - Custom script běží PO presetu (bash, timeout 5 min)
 
 ### Plugin auto-detection

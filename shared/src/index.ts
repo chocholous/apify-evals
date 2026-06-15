@@ -1,7 +1,7 @@
 export { parseScenario, ScenarioParseError } from './scenario-parser.js';
 export { runAgent, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from './agents/run.js';
 export { getAgentDef, buildAgentArgs, AGENT_REGISTRY } from './agents/registry.js';
-export { judgeAllChecks, parseCheckpointSection } from './judge.js';
+export { judgeAllChecks, parseCheckpointSection, computeOverall } from './judge.js';
 export { formatCost, formatDuration } from './metrics.js';
 export { maskSecrets, maskEventsJsonl, stripEnvFromProcess } from './log-masker.js';
 export { runInitPreset } from './init-presets.js';
@@ -17,4 +17,4 @@ export type { AgentRunOptions, AgentRunResult } from './agents/run.js';
 export type { AgentDef } from './agents/registry.js';
 export type { CheckpointSpec, ParsedCheckpoint, JudgeOptions, JudgeResult, ScriptJudgeOptions } from './judge.js';
 export type { OtlpJsonData } from './otel-exporter.js';
-export type { PresetName, InitContext, InitResult } from './init-presets.js';
+export type { PresetName, InitContext, InitResult, TrajectoryReject } from './init-presets.js';

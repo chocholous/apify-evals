@@ -8,7 +8,7 @@ const EXAMPLES_DIR = join(import.meta.dirname, '../../../examples');
 const INPUT_SCHEMA_PATH = join(import.meta.dirname, '../../../actors/runner/.actor/input_schema.json');
 
 const VALID_AGENTS = ['claude-code', 'codex', 'opencode'];
-const VALID_PRESETS = ['none', 'mcp_native', 'cli_native', 'mcpc'];
+const VALID_PRESETS = ['none', 'mcp_native', 'cli_native', 'mcpc', 'api_native', 'mcp_only', 'cli_only', 'api_only'];
 
 const exampleFiles = readdirSync(EXAMPLES_DIR)
     .filter((f) => f.endsWith('.json'));

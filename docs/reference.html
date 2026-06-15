@@ -675,8 +675,8 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
     <tbody>
         <tr>
             <td><code>none</code></td>
-            <td>Built-in only</td>
-            <td>Žádná speciální inicializace</td>
+            <td>Built-in + optional MCP</td>
+            <td>Ověří dostupnost <code>apify</code>/<code>gh</code>/<code>curl</code>/<code>jq</code> v PATH a volitelně zapíše <code>mcpConfigJson</code> do <code>.eval-config/mcp-config.json</code> (pokud je zadán)</td>
         </tr>
         <tr>
             <td><code>mcp_native</code></td>
@@ -693,8 +693,36 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
             <td>MCP via mcpc bridge</td>
             <td>Zkontroluje mcpc, volitelně zapíše MCP config</td>
         </tr>
+        <tr>
+            <td><code>api_native</code></td>
+            <td>curl, jq (REST API)</td>
+            <td>Ověří dostupnost <code>curl</code>/<code>jq</code> — signal-only preset pro raw HTTPS volání proti <code>api.apify.com</code> (žádný MCP config, žádný sandbox; spárovat se <code>systemPrompt</code>)</td>
+        </tr>
+        <tr>
+            <td><code>mcp_only</code></td>
+            <td>POUZE MCP</td>
+            <td>Exkluzivní MCP surface. Vyžaduje <code>mcpConfigJson</code>. PATH-shimuje <code>apify</code>/<code>curl</code>/<code>wget</code>, zamítá <code>WebFetch</code>/<code>WebSearch</code> a shell mentioning <code>api.apify.com</code> přes trajectory hard-reject. Agent-agnostic.</td>
+        </tr>
+        <tr>
+            <td><code>cli_only</code></td>
+            <td>POUZE apify-cli</td>
+            <td>Exkluzivní CLI surface. MCP config se nezapisuje (žádné servery). PATH-shimuje <code>curl</code>/<code>wget</code>, zamítá <code>WebFetch</code>/<code>WebSearch</code> a jakékoli MCP nástroje přes trajectory hard-reject.</td>
+        </tr>
+        <tr>
+            <td><code>api_only</code></td>
+            <td>POUZE REST API (curl / fetch)</td>
+            <td>Exkluzivní REST surface. PATH-shimuje <code>apify</code>. MCP config se nezapisuje. Zamítá jakékoli apify-cli volání nebo MCP nástroj. <code>WebFetch</code> a curl jsou povolené — JSOU to REST surface.</td>
+        </tr>
     </tbody>
 </table>
+
+<h4>How <code>*_only</code> exclusivity is enforced</h4>
+<p>Three independent layers, all evaluated for every test:</p>
+<ol>
+    <li><strong>PATH shim</strong> — runner writes no-op shim binaries to <code>${workDir}/.eval-shim/</code> and prepends that directory to the agent subprocess's <code>PATH</code>. Direct invocation of a shimmed tool returns exit 127.</li>
+    <li><strong>MCP config gating</strong> — for <code>cli_only</code>/<code>api_only</code> the runner does not pass <code>--mcp-config</code>, so no MCP servers are loaded regardless of <code>mcpConfigJson</code> content.</li>
+    <li><strong>Trajectory hard-reject</strong> — after the agent finishes, the runner inspects the normalized trajectory (<code>commandsExecuted</code>, <code>uniqueToolsUsed</code>, <code>mcpToolsUsed</code>) against preset-specific rules and appends <code>preset-trajectory</code> verdicts. This is the agent-agnostic layer — it works for claude-code, codex, and opencode because the trajectory shape is normalized across agents. It's also the only layer that catches in-agent tools like <code>WebFetch</code>/<code>WebSearch</code> which can't be PATH-shimmed.</li>
+</ol>
 
 <h4>MCP Config JSON</h4>
 <p>Runner zapíše <code>mcpConfigJson</code> <strong>as-is</strong> do <code>.eval-config/mcp-config.json</code> &mdash; sám neprovádí interpolaci placeholderů. Agent (Claude Code CLI) pak konfiguraci načítá; zda <code>${APIFY_TOKEN}</code> uvnitř <code>env</code> blocku resolvuje záleží na MCP runtime daného agenta. Hodnoty <code>envVariables</code> jsou zároveň předány agentově subprocessu, takže MCP servery spuštěné přes <code>npx</code> tyto proměnné zdědí v <code>process.env</code>.</p>

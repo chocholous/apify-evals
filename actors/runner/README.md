@@ -172,16 +172,45 @@ The `jq:` approach replaced an earlier design with `expectedTools` frontmatter (
 
 ## Init presets
 
-Presets configure what tools the agent has access to:
+Presets come in two families:
 
-| Preset | What the agent gets |
-|--------|-------------------|
-| None | No special tools — agent uses only built-in capabilities |
-| MCP Native | MCP servers defined in your config JSON (Apify, GitHub, etc.) |
-| CLI Native | Command-line tools (gh, apify-cli) |
-| mcpc | MCP servers accessed via mcpc CLI bridge |
+**`*_native` presets — surface MADE AVAILABLE, others NOT restricted.** Useful for measuring *preference* ("when X is available, does the agent reach for it?").
 
-Choose different presets to compare how the same agent performs with different tool setups.
+| Preset | What the agent gets | What's still available |
+|--------|-------------------|-------------------|
+| None | Built-in capabilities; logs availability of `apify`/`gh`/`curl`/`jq` and writes `mcpConfigJson` if provided | — |
+| MCP Native | MCP servers from your config JSON | CLI, REST API (not restricted) |
+| CLI Native | CLI tools on PATH (gh, apify-cli) | MCP (if config provided), REST API |
+| mcpc | MCP servers via mcpc CLI bridge | CLI, REST API |
+| API Native | Raw HTTPS against `api.apify.com` (curl + bearer token) | CLI, MCP (if config provided) |
+
+**`*_only` presets — surface ENFORCED EXCLUSIVELY via three layers.** Useful for measuring *sufficiency* ("is surface X enough on its own to complete the task?").
+
+| Preset | What the agent gets | What's enforced off (and how) |
+|--------|-------------------|-------------------|
+| **MCP Only** | MCP servers from your config JSON only | `apify`/`curl`/`wget` shimmed off PATH; in-agent `WebFetch`/`WebSearch` hard-rejected via trajectory check; any `api.apify.com` mention in shell rejected |
+| **CLI Only** | apify-cli only | MCP config not loaded; `curl`/`wget` shimmed off PATH; `WebFetch`/`WebSearch` hard-rejected; MCP tool use hard-rejected |
+| **API Only** | curl + built-in HTTPS only | `apify` shimmed off PATH; MCP config not loaded; any apify-cli invocation or MCP tool use hard-rejected |
+
+### How `*_only` enforcement actually works (defense in depth)
+
+Three independent layers, all evaluated for every test:
+
+1. **PATH shimming.** The runner writes no-op shim binaries to `${workDir}/.eval-shim/` (one per disallowed tool) and prepends that directory to the agent subprocess's `PATH`. The first `which` / direct invocation of a shimmed tool returns exit 127.
+2. **MCP config gating.** For `cli_only` / `api_only`, the runner does NOT pass `--mcp-config` to the agent CLI — so no MCP servers are loaded at all, no matter what's in `mcpConfigJson`. For `mcp_only`, `mcpConfigJson` is mandatory; without it, the agent is left with no surface (intentional hard failure).
+3. **Trajectory hard-reject.** After the agent finishes, the runner inspects the *normalized* trajectory (`commandsExecuted`, `uniqueToolsUsed`, `mcpToolsUsed`) against per-preset rejection rules. Any matched rule appends a `preset-trajectory` verdict to the test's verdicts and flips the overall to `fail`. This is the agent-agnostic layer — every supported agent (claude-code, codex, opencode) emits the same normalized trajectory, so the rules work identically regardless of which agent ran. **This is the load-bearing layer** for in-agent tools like `WebFetch`/`WebSearch` that can't be PATH-shimmed.
+
+The combination handles every realistic leak path:
+
+| Leak attempt | (1) PATH shim | (2) MCP gating | (3) Trajectory reject |
+|---|---|---|---|
+| `apify-cli` subprocess | blocks (exit 127) | — | catches even if shim bypassed |
+| `curl https://api.apify.com/...` | blocks (exit 127) | — | catches if the agent worked around the shim |
+| `node -e "fetch(...)"` | doesn't block (node isn't shimmed) | — | **catches** via `commandsExecuted` regex |
+| Claude Code `WebFetch` | doesn't apply (in-agent tool) | — | **catches** via `uniqueToolsUsed` |
+| MCP tool call in `cli_only`/`api_only` | — | blocks (no servers loaded) | catches as a fallback |
+
+> **Note on perfect enforcement:** true network-level isolation (e.g. `unshare --net` + iptables) would be the gold standard but requires `NET_ADMIN` capability, which unprivileged Apify Actors don't have. The PATH + MCP-gating + trajectory combo is the most reliable enforcement we can implement in userspace, and it's agent-agnostic — not tied to claude-code's `--disallowed-tools` flag (which codex / opencode don't support).
 
 ### MCP Config JSON example
 

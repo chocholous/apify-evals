@@ -34,7 +34,7 @@ export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear' | 'platform_f
 
 export type EvalGapSeverity = 'critical' | 'noncritical' | 'ok';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error';
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error' | 'preset-trajectory';
 
 export interface CheckVerdict {
     checkType: CheckType;
