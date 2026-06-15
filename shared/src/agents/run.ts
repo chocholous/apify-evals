@@ -557,7 +557,39 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             pluginDirs: options.pluginDirs,
         });
 
-        const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
+        // Strip Apify runtime env vars that would otherwise bleed into the agent
+        // subprocess (and any actor it spawns locally), causing the agent's
+        // locally-run Actor to push its output into the runner's OWN cloud dataset /
+        // KV store / request queue. Observed in eval-pack Run 7: an agent's
+        // locally-run scraper wrote 879 product rows into the runner's default
+        // dataset, burying the per-test verdict records under unrelated output.
+        const APIFY_RUNTIME_KEYS_TO_STRIP = [
+            'APIFY_DEFAULT_DATASET_ID',
+            'APIFY_DEFAULT_KEY_VALUE_STORE_ID',
+            'APIFY_DEFAULT_REQUEST_QUEUE_ID',
+            'APIFY_ACTOR_RUN_ID',
+            'APIFY_ACTOR_ID',
+            'APIFY_ACTOR_BUILD_ID',
+            'APIFY_ACTOR_BUILD_NUMBER',
+            'APIFY_ACTOR_TASK_ID',
+            'APIFY_INPUT_KEY',
+            'APIFY_TIMEOUT_AT',
+            'APIFY_ACTOR_EVENTS_WS_URL',
+            'APIFY_PROXY_PASSWORD',
+        ] as const;
+
+        const childEnv: NodeJS.ProcessEnv = options.env
+            ? { ...process.env, ...options.env }
+            : { ...process.env };
+        for (const k of APIFY_RUNTIME_KEYS_TO_STRIP) delete childEnv[k];
+        // Point the SDK at a local storage dir so the locally-run actor's
+        // `Actor.pushData` lands under the workspace rather than reaching for cloud
+        // storage (which the agent legitimately needs APIFY_TOKEN for elsewhere — e.g.
+        // `apify push` in T3 — so we can't simply unset the token).
+        if (options.cwd && !childEnv.APIFY_LOCAL_STORAGE_DIR) {
+            childEnv.APIFY_LOCAL_STORAGE_DIR = join(options.cwd, 'storage');
+        }
+
         const startTime = Date.now();
         const workDir = process.cwd();
 
