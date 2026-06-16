@@ -196,7 +196,7 @@ Presets come in two families:
 
 Three independent layers, all evaluated for every test:
 
-1. **PATH shimming.** The runner writes no-op shim binaries to `${workDir}/.eval-shim/` (one per disallowed tool) and prepends that directory to the agent subprocess's `PATH`. The first `which` / direct invocation of a shimmed tool returns exit 127.
+1. **PATH shimming.** The runner writes no-op shim binaries to a per-run OS-tmpdir shim directory (one per disallowed tool), deliberately outside the agent's writable workspace so the agent can't `rm -rf` it, and prepends that directory to the agent subprocess's `PATH`. The first `which` / direct invocation of a shimmed tool returns exit 127.
 2. **MCP config gating.** For `cli_only` / `api_only`, the runner does NOT pass `--mcp-config` to the agent CLI — so no MCP servers are loaded at all, no matter what's in `mcpConfigJson`. For `mcp_only`, `mcpConfigJson` is mandatory; without it, the agent is left with no surface (intentional hard failure).
 3. **Trajectory hard-reject.** After the agent finishes, the runner inspects the *normalized* trajectory (`commandsExecuted`, `uniqueToolsUsed`, `mcpToolsUsed`) against per-preset rejection rules. Any matched rule appends a `preset-trajectory` verdict to the test's verdicts and flips the overall to `fail`. This is the agent-agnostic layer — every supported agent (claude-code, codex, opencode) emits the same normalized trajectory, so the rules work identically regardless of which agent ran. **This is the load-bearing layer** for in-agent tools like `WebFetch`/`WebSearch` that can't be PATH-shimmed.
 

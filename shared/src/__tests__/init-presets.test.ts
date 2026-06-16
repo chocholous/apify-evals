@@ -219,6 +219,10 @@ describe('runInitPreset', () => {
             expect(builtinReject).toBeDefined();
             expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebFetch'] }))).toBe(true);
             expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebSearch'] }))).toBe(true);
+            // Case-insensitive so opencode's lowercase tool names are also caught
+            // (agent-agnostic guarantee — claude-code emits WebFetch, opencode webfetch).
+            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['webfetch'] }))).toBe(true);
+            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['websearch'] }))).toBe(true);
             expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['Bash', 'Read'] }))).toBe(false);
         });
 

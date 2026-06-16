@@ -171,7 +171,13 @@ const REJECT_REST_VIA_INAGENT_TOOLS: TrajectoryReject = {
     name: 'no-rest-surface-via-builtin-tools',
     reason: 'Agent used the built-in `WebFetch` or `WebSearch` tool — the active preset disallows the REST API surface (these tools make direct HTTPS calls).',
     severity: 'fail',
-    predicate: (t) => t.uniqueToolsUsed.some((n) => n === 'WebFetch' || n === 'WebSearch'),
+    // Case-insensitive: claude-code emits `WebFetch`/`WebSearch`, opencode emits
+    // lowercase (`webfetch`/`websearch`). Matching exact-case would silently miss
+    // opencode and break the "agent-agnostic" guarantee.
+    predicate: (t) => t.uniqueToolsUsed.some((n) => {
+        const tool = n.toLowerCase();
+        return tool === 'webfetch' || tool === 'websearch';
+    }),
 };
 
 const REJECT_MCP_VIA_TOOL: TrajectoryReject = {
@@ -289,7 +295,7 @@ export function runInitPreset(ctx: InitContext): InitResult {
             if (ctx.mcpConfigJson) {
                 log.push(
                     'cli_only: mcpConfigJson provided but IGNORED — cli_only does not load MCP servers. ' +
-                    'Use mcp_only or open_world if you want MCP available.',
+                    'Use mcp_only or mcp_native if you want MCP available.',
                 );
             }
 

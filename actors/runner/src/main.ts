@@ -241,8 +241,9 @@ for (let i = 0; i < tests.length; i++) {
         log.info(`  [phase=agent] start`);
         let resultEventLogged = false;
         // PATH shim: when a `*_only` preset has written disallowed-tool shims under
-        // `${workDir}/.eval-shim/`, prepend that dir to the agent subprocess's PATH
-        // so the shims take precedence over the image-installed binaries. Exporting
+        // an OS-tmpdir shim dir (outside the agent's writable cwd), prepend that dir
+        // to the agent subprocess's PATH so the shims take precedence over the
+        // image-installed binaries. Exporting
         // PATH inside an init script doesn't propagate (each runScript is its own
         // subshell); this is the only place where it reaches the agent.
         const agentEnv: Record<string, string> = currentPathPrefix

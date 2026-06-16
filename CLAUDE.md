@@ -260,7 +260,7 @@ Presets konfigurují **prostředí agenta** (ne vyhodnocení):
 - `api_only` — agent může používat POUZE REST API přes `curl` / built-in fetch. `apify` shimnuté; MCP config se nezapisuje; jakékoli volání apify-cli nebo MCP nástroje zamítnuto.
 
 Enforcement běží ve třech vrstvách (defense in depth, viz `actors/runner/README.md`):
-1. **PATH shim** — runner zapíše shim binárky do `${workDir}/.eval-shim/` a tuto cestu přidá na začátek PATH agentova subprocessu. Přímé volání disallowed nástroje vrátí exit 127.
+1. **PATH shim** — runner zapíše shim binárky do per-run adresáře v OS tmpdir (záměrně mimo zapisovatelný workspace agenta, aby ho nešlo `rm -rf`) a tuto cestu přidá na začátek PATH agentova subprocessu. Přímé volání disallowed nástroje vrátí exit 127.
 2. **MCP config gating** — pro `cli_only`/`api_only` se `--mcp-config` agentu vůbec nepředá (žádné MCP servery se nenačtou).
 3. **Trajectory hard-reject** — runner po doběhnutí agenta inspekuje znormalizovanou trajectory (`commandsExecuted`, `uniqueToolsUsed`, `mcpToolsUsed`) proti preset-specific rejection rules a přidá `preset-trajectory` verdicty. Agent-agnostic — funguje pro všechny podporované agenty, ne jen pro claude-code.
 

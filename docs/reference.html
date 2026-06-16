@@ -719,7 +719,7 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
 <h4>How <code>*_only</code> exclusivity is enforced</h4>
 <p>Three independent layers, all evaluated for every test:</p>
 <ol>
-    <li><strong>PATH shim</strong> — runner writes no-op shim binaries to <code>${workDir}/.eval-shim/</code> and prepends that directory to the agent subprocess's <code>PATH</code>. Direct invocation of a shimmed tool returns exit 127.</li>
+    <li><strong>PATH shim</strong> — runner writes no-op shim binaries to a per-run OS-tmpdir directory (outside the agent's writable cwd) and prepends that directory to the agent subprocess's <code>PATH</code>. Direct invocation of a shimmed tool returns exit 127.</li>
     <li><strong>MCP config gating</strong> — for <code>cli_only</code>/<code>api_only</code> the runner does not pass <code>--mcp-config</code>, so no MCP servers are loaded regardless of <code>mcpConfigJson</code> content.</li>
     <li><strong>Trajectory hard-reject</strong> — after the agent finishes, the runner inspects the normalized trajectory (<code>commandsExecuted</code>, <code>uniqueToolsUsed</code>, <code>mcpToolsUsed</code>) against preset-specific rules and appends <code>preset-trajectory</code> verdicts. This is the agent-agnostic layer — it works for claude-code, codex, and opencode because the trajectory shape is normalized across agents. It's also the only layer that catches in-agent tools like <code>WebFetch</code>/<code>WebSearch</code> which can't be PATH-shimmed.</li>
 </ol>

@@ -94,18 +94,9 @@
         "mcpConfigJson": {
             "title": "MCP Config JSON",
             "type": "object",
-            "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables.",
+            "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables. Not prefilled: leaving it empty means no MCP servers (so the default 'none' preset stays a true no-MCP baseline) — see the README for an example config.",
             "editor": "json",
-            "nullable": true,
-            "prefill": {
-                "mcpServers": {
-                    "apify": {
-                        "command": "npx",
-                        "args": ["-y", "@apify/mcp-server"],
-                        "env": { "APIFY_TOKEN": "${APIFY_TOKEN}" }
-                    }
-                }
-            }
+            "nullable": true
         }
     },
     "required": ["scenario"]
