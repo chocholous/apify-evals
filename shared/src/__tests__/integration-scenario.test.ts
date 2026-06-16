@@ -5,7 +5,13 @@ import { join } from 'node:path';
 import { runAgent } from '../agents/run.js';
 import { judgeAllChecks } from '../judge.js';
 import { parseScenario } from '../scenario-parser.js';
+import { claudeAvailable } from './_claude-available.js';
 import type { AgentResult } from '../types.js';
+
+// Tests that spawn the real `claude` binary (billable, live API) are guarded
+// with `it.skipIf` so they skip when the binary isn't on PATH (e.g. CI). The
+// parse-only tests in each suite still run everywhere.
+const HAS_CLAUDE = claudeAvailable();
 
 const SCENARIOS_DIR = join(import.meta.dirname, '../../../scenarios');
 
@@ -18,7 +24,7 @@ describe('integration: multi-check-demo scenario', () => {
         expect(tests).toHaveLength(2);
     });
 
-    it('test 1: Jupiter question with multi-check', async () => {
+    it.skipIf(!HAS_CLAUDE)('test 1: Jupiter question with multi-check', async () => {
         const result = await runAgent({
             agent: 'claude-code',
             prompt: tests[0].test,
@@ -45,7 +51,7 @@ describe('integration: multi-check-demo scenario', () => {
         expect(deterministicVerdicts.every((v) => v.verdict === 'pass')).toBe(true);
     }, 60_000);
 
-    it('test 2: file creation with script + json-schema + llm-judge', async () => {
+    it.skipIf(!HAS_CLAUDE)('test 2: file creation with script + json-schema + llm-judge', async () => {
         const result = await runAgent({
             agent: 'claude-code',
             prompt: tests[1].test,
@@ -87,7 +93,7 @@ describe('integration: trajectory-test scenario', () => {
         expect(tests).toHaveLength(2);
     });
 
-    it('captures rich trajectory data', async () => {
+    it.skipIf(!HAS_CLAUDE)('captures rich trajectory data', async () => {
         const result = await runAgent({
             agent: 'claude-code',
             prompt: tests[0].test,

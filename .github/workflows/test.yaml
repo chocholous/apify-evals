@@ -17,4 +17,31 @@ jobs:
       - run: npm ci
       - run: cd shared && npm run build
       - run: cd actors/runner && npm run build
+      # Live claude-agent integration tests skip here (binary not installed) —
+      # they run for real in the integration-tests job below.
       - run: cd shared && npx vitest run
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    # Skip on fork PRs, where repository secrets (the OAuth token) aren't available.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      # Long-lived Claude subscription OAuth token (generate with `claude setup-token`).
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: cd shared && npm run build
+      - name: Install Claude Code CLI
+        run: npm i -g @anthropic-ai/claude-code
+      - name: Verify claude is on PATH
+        run: claude --version
+      # Live, billable tests — run only when the OAuth token secret is configured.
+      # Without it, the step is skipped (job stays green) rather than failing on auth.
+      - name: Run live integration tests
+        if: ${{ env.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: cd shared && npx vitest run integration
