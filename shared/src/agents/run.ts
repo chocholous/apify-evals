@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { buildChildEnv } from './apify-env.js';
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, HungWarning } from '../types.js';
 import {
     SILENCE_NOTICE_MS,
@@ -586,7 +587,15 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             pluginDirs: options.pluginDirs,
         });
 
-        const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
+        // Strip Apify runtime env vars that would otherwise bleed into the agent
+        // subprocess (and any Actor it runs locally), causing the agent's locally-run
+        // Actor to push its output into the runner's OWN cloud dataset / KV store /
+        // request queue. The decisive var is APIFY_IS_AT_HOME (and the canonical
+        // ACTOR_* storage IDs) — see buildChildEnv / APIFY_RUNTIME_KEYS_TO_STRIP in
+        // ./apify-env.ts. Observed in eval-pack Run 7: an agent's locally-run scraper
+        // wrote 879 product rows into the runner's default dataset, burying verdicts.
+        const childEnv = buildChildEnv(options.env, options.cwd);
+
         const startTime = Date.now();
         const workDir = process.cwd();
 
