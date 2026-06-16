@@ -10,6 +10,7 @@ import type { CheckVerdict, CheckType, VerdictValue, EvalGapSeverity } from './t
 import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
+import { buildChildEnv } from './agents/apify-env.js';
 
 export interface CheckpointSpec {
     type: CheckType;
@@ -145,35 +146,6 @@ export interface ScriptJudgeOptions {
     events?: unknown[];
 }
 
-// Mirror of the same list in shared/src/agents/run.ts — kept inline to avoid
-// cross-module deps. If you add to one, update the other. See FINDINGS.md F11.
-// Without this scrub, script/jq check subprocesses inherit the runner's Apify
-// runtime vars and any actor they spawn (e.g. `apify run` in T2) writes to the
-// runner's own cloud dataset rather than local workspace storage.
-const APIFY_RUNTIME_KEYS_TO_STRIP = [
-    'APIFY_DEFAULT_DATASET_ID',
-    'APIFY_DEFAULT_KEY_VALUE_STORE_ID',
-    'APIFY_DEFAULT_REQUEST_QUEUE_ID',
-    'APIFY_ACTOR_RUN_ID',
-    'APIFY_ACTOR_ID',
-    'APIFY_ACTOR_BUILD_ID',
-    'APIFY_ACTOR_BUILD_NUMBER',
-    'APIFY_ACTOR_TASK_ID',
-    'APIFY_INPUT_KEY',
-    'APIFY_TIMEOUT_AT',
-    'APIFY_ACTOR_EVENTS_WS_URL',
-    'APIFY_PROXY_PASSWORD',
-] as const;
-
-function buildScriptEnv(extraEnv: Record<string, string> | undefined, workDir: string | undefined): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = extraEnv ? { ...process.env, ...extraEnv } : { ...process.env };
-    for (const k of APIFY_RUNTIME_KEYS_TO_STRIP) delete env[k];
-    if (workDir && !env.APIFY_LOCAL_STORAGE_DIR) {
-        env.APIFY_LOCAL_STORAGE_DIR = `${workDir}/storage`;
-    }
-    return env;
-}
-
 function buildEvidence(stdout: string, stderr: string, fallback: string): string {
     if (stdout && stderr) return `${stdout}\n\n--- stderr ---\n${stderr}`;
     return stdout || stderr || fallback;
@@ -188,7 +160,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: buildScriptEnv(options?.env, options?.workDir),
+            env: buildChildEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence };
@@ -220,7 +192,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: buildScriptEnv(options?.env, options?.workDir),
+            env: buildChildEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'jq expression returned truthy';
         return { checkType: 'jq', checkValue: expression, verdict: 'pass', evidence };
