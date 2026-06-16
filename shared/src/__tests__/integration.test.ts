@@ -3,8 +3,11 @@ import { describe, it, expect } from 'vitest';
 import { runAgent } from '../agents/run.js';
 import { judgeAllChecks } from '../judge.js';
 import { parseScenario } from '../scenario-parser.js';
+import { claudeAvailable } from './_claude-available.js';
 
-describe('integration: full pipeline with claude-code', () => {
+// Live agent suite: spawns the real `claude` binary and makes billable API
+// calls. Skips when the binary isn't on PATH (e.g. CI) instead of failing.
+describe.skipIf(!claudeAvailable())('integration: full pipeline with claude-code', () => {
     it('runs a simple prompt and extracts metrics + trajectory', async () => {
         const result = await runAgent({
             agent: 'claude-code',
