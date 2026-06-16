@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { buildChildEnv } from './apify-env.js';
 import type { AgentEvent, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, HungWarning } from '../types.js';
 import {
     SILENCE_NOTICE_MS,
@@ -72,6 +73,26 @@ export const EMPTY_TRAJECTORY: TrajectoryMetrics = {
 
 const TEE_PATTERN = /\btee\s+(?:-a\s+)?(\S+)/g;
 const CP_MV_PATTERN = /\b(?:cp|mv)\s+.*?\s+(\S+)\s*$/gm;
+
+/**
+ * Compose the agent's effective user prompt by prepending `systemPrompt` (if
+ * non-empty) to `userPrompt`, separated by a clear markdown boundary.
+ *
+ * Used by `runAgent` instead of passing systemPrompt as a `--system-prompt` /
+ * `--append-system-prompt` CLI flag. Rationale (see runAgent body for full
+ * comment): cross-agent uniformity is more valuable than native-mechanism
+ * placement when the eval is non-adversarial and we want comparable inputs
+ * across claude-code, codex, and opencode.
+ *
+ * Falsy `systemPrompt` (undefined, null, empty string, whitespace-only) is
+ * passed through unchanged — the agent CLI then uses its own built-in
+ * identity prompt, which is the realistic baseline for "user opens this CLI
+ * with no customisation."
+ */
+export function applyPromptPrefix(systemPrompt: string | undefined | null, userPrompt: string): string {
+    if (!systemPrompt || !systemPrompt.trim()) return userPrompt;
+    return `${systemPrompt}\n\n---\n\nUser task:\n\n${userPrompt}`;
+}
 
 export function extractFileOpsFromCommand(cmd: string): { created: string[]; modified: string[] } {
     const created: string[] = [];
@@ -546,9 +567,18 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
     }
 
     return new Promise((resolve) => {
+        const effectivePrompt = applyPromptPrefix(options.systemPrompt, options.prompt);
+
         const args = buildAgentArgs(def, {
-            prompt: options.prompt,
-            systemPrompt: options.systemPrompt,
+            prompt: effectivePrompt,
+            // Deliberately NOT passing systemPrompt — the content is in
+            // `prompt` above (via applyPromptPrefix). buildAgentArgs' existing
+            // `if (opts.systemPrompt && def.systemPromptFlag)` gate becomes
+            // dormant: nothing falsy or undefined ever reaches it. The
+            // `systemPromptFlag` field in registry.ts is kept as
+            // backwards-compat / documentation; if a future caller bypasses
+            // runAgent and uses buildAgentArgs directly with a systemPrompt,
+            // the old flag-based behaviour still works.
             model: options.model,
             maxTurns: options.maxTurns,
             maxBudgetUsd: options.maxBudgetUsd,
@@ -557,7 +587,15 @@ export function runAgent(options: AgentRunOptions): Promise<AgentRunResult> {
             pluginDirs: options.pluginDirs,
         });
 
-        const childEnv = options.env ? { ...process.env, ...options.env } : process.env;
+        // Strip Apify runtime env vars that would otherwise bleed into the agent
+        // subprocess (and any Actor it runs locally), causing the agent's locally-run
+        // Actor to push its output into the runner's OWN cloud dataset / KV store /
+        // request queue. The decisive var is APIFY_IS_AT_HOME (and the canonical
+        // ACTOR_* storage IDs) — see buildChildEnv / APIFY_RUNTIME_KEYS_TO_STRIP in
+        // ./apify-env.ts. Observed in eval-pack Run 7: an agent's locally-run scraper
+        // wrote 879 product rows into the runner's default dataset, burying verdicts.
+        const childEnv = buildChildEnv(options.env, options.cwd);
+
         const startTime = Date.now();
         const workDir = process.cwd();
 

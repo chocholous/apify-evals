@@ -10,6 +10,7 @@ import type { CheckVerdict, CheckType, VerdictValue, EvalGapSeverity } from './t
 import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, JUDGE_MODEL_MAP } from './constants.js';
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
+import { buildChildEnv } from './agents/apify-env.js';
 
 export interface CheckpointSpec {
     type: CheckType;
@@ -145,6 +146,11 @@ export interface ScriptJudgeOptions {
     events?: unknown[];
 }
 
+function buildEvidence(stdout: string, stderr: string, fallback: string): string {
+    if (stdout && stderr) return `${stdout}\n\n--- stderr ---\n${stderr}`;
+    return stdout || stderr || fallback;
+}
+
 function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeOptions, failVerdict: VerdictValue = 'fail'): CheckVerdict {
     const timeoutMs = options?.timeoutMs ?? SCRIPT_TIMEOUT_MS;
     try {
@@ -154,7 +160,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: options?.env ? { ...process.env, ...options.env } : process.env,
+            env: buildChildEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence };
@@ -163,7 +169,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
         if (error.status !== undefined && error.status !== null) {
             const stdout = error.stdout?.toString().trim() ?? '';
             const stderr = error.stderr?.toString().trim() ?? '';
-            const evidence = stdout || stderr || `Script exited with code ${error.status}`;
+            const evidence = buildEvidence(stdout, stderr, `Script exited with code ${error.status}`);
             return { checkType: 'script', checkValue: script, verdict: failVerdict, evidence };
         }
         const msg = error.message ?? String(err);
@@ -186,7 +192,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: options?.env ? { ...process.env, ...options.env } : process.env,
+            env: buildChildEnv(options?.env, options?.workDir),
         });
         const evidence = stdout.toString().trim() || 'jq expression returned truthy';
         return { checkType: 'jq', checkValue: expression, verdict: 'pass', evidence };
@@ -195,7 +201,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
         if (error.status !== undefined && error.status !== null) {
             const stdout = error.stdout?.toString().trim() ?? '';
             const stderr = error.stderr?.toString().trim() ?? '';
-            const evidence = stderr || stdout || `jq exited with code ${error.status}`;
+            const evidence = buildEvidence(stdout, stderr, `jq exited with code ${error.status}`);
             return { checkType: 'jq', checkValue: expression, verdict: failVerdict, evidence };
         }
         const msg = error.message ?? String(err);

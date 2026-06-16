@@ -2,10 +2,100 @@ import { setTimeout } from 'node:timers/promises';
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
 import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
+
+/**
+ * List files in workspace up to 3 levels deep, skipping noisy dirs.
+ * Used for post-mortem visibility into the scaffold layout at judge time.
+ * Bounded output: at most ~500 entries to keep KVS records small.
+ */
+function buildWorkspaceTree(workDir: string): string[] {
+    try {
+        const out = execFileSync('find', [
+            workDir,
+            '-maxdepth', '3',
+            '-not', '-path', '*/node_modules/*',
+            '-not', '-path', '*/.git/*',
+            '-not', '-path', '*/dist/*',
+            '-not', '-path', '*/storage/*',
+        ], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+        const lines = out.split('\n').filter((l) => l.length > 0);
+        // Strip the workDir prefix to keep entries compact and portable.
+        const rel = lines.map((p) => (p === workDir ? '.' : p.startsWith(workDir + '/') ? p.slice(workDir.length + 1) : p));
+        return rel.slice(0, 500);
+    } catch (err) {
+        return [`<workspace-tree unavailable: ${err instanceof Error ? err.message : String(err)}>`];
+    }
+}
+
+/**
+ * Persist a per-(test, attempt) record to the Actor's key-value store so post-mortems
+ * don't depend on stdout log truncation. One KVS entry per attempt — survives retries
+ * (unlike the overwritten LIVE-* keys).
+ */
+async function persistAttemptResult(args: {
+    i: number;
+    attempt: number;
+    test: { test: string; checkpoint: string };
+    meta: { name: string };
+    agent: string;
+    model: string;
+    judgeResult: JudgeResult;
+    judgeMs: number;
+    lastRunResult: AgentRunResult | null;
+    currentWorkDir: string;
+    secrets: Record<string, string>;
+}): Promise<void> {
+    const { i, attempt, test, meta, agent, model, judgeResult, judgeMs, lastRunResult, currentWorkDir, secrets } = args;
+    const agentOutput = lastRunResult?.text ?? '';
+    const agentOutputTail = agentOutput.length > 4096 ? agentOutput.slice(-4096) : agentOutput;
+    const record = {
+        scenarioName: meta.name,
+        agent,
+        model,
+        testIndex: i,
+        testNumber: i + 1,
+        attemptNumber: attempt + 1,
+        isRetry: attempt > 0,
+        timestamp: new Date().toISOString(),
+
+        testPrompt: test.test,
+        checkpoint: test.checkpoint,
+
+        overallVerdict: judgeResult.overallVerdict,
+        verdicts: judgeResult.verdicts,
+        judgeDurationMs: judgeMs,
+
+        agentMetrics: lastRunResult?.metrics ?? EMPTY_METRICS,
+        stopReason: lastRunResult?.stopReason ?? 'unknown',
+        exitCode: lastRunResult?.exitCode ?? null,
+        signal: lastRunResult?.signal ?? null,
+        aborted: lastRunResult?.aborted ?? false,
+        error: lastRunResult?.error ?? null,
+        shutdownReason: lastRunResult?.shutdownReason ?? null,
+        hungWarnings: lastRunResult?.hungWarnings ?? [],
+
+        workspace: {
+            workDir: currentWorkDir,
+            files: buildWorkspaceTree(currentWorkDir),
+        },
+        workspaceTree: buildWorkspaceTree(currentWorkDir),
+
+        agentOutputLength: agentOutput.length,
+        agentOutputTail,
+    };
+    const key = `TEST-${i + 1}-ATTEMPT-${attempt + 1}-RESULT`;
+    try {
+        const masked = maskSecrets(JSON.stringify(record), secrets);
+        await Actor.setValue(key, masked, { contentType: 'application/json' });
+    } catch (err) {
+        log.warning(`  Failed to persist ${key}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
 
 interface RunnerInput {
     agent?: string;
@@ -129,8 +219,19 @@ for (let i = 0; i < tests.length; i++) {
         }
         monitorOutput = null;
 
-        const systemPrompt = input.systemPrompt
-            ?? 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.';
+        // Pass input.systemPrompt through as-is. Previously this line injected
+        // an eval-flavoured default ("You are an AI agent being evaluated…")
+        // when the input was undefined/null, which leaked evaluation context
+        // into every run that didn't explicitly override systemPrompt.
+        //
+        // With the new prompt-prefix design (see runAgent in shared/src/agents/run.ts),
+        // systemPrompt is no longer passed to the agent CLI as a --system-prompt
+        // flag. Instead, runAgent prepends it to the user prompt with a clear
+        // separator. An undefined / empty systemPrompt means "no prepend" —
+        // the agent CLI receives only the user task and uses its own built-in
+        // identity prompt (which is the realistic baseline for "real user
+        // opens Claude Code / Codex / OpenCode without customisation").
+        const systemPrompt = input.systemPrompt;
 
         let turnCount = 0;
         let rawLineCount = 0;
@@ -205,6 +306,10 @@ for (let i = 0; i < tests.length; i++) {
                 verdicts: [{ checkType: 'error', checkValue: '', verdict: 'fail', evidence: 'Run aborted due to budget limit' }],
                 overallVerdict: 'fail',
             };
+            await persistAttemptResult({
+                i, attempt, test, meta, agent, model: input.model ?? 'default',
+                judgeResult, judgeMs, lastRunResult, currentWorkDir, secrets,
+            });
             break;
         }
 
@@ -219,6 +324,10 @@ for (let i = 0; i < tests.length; i++) {
                 verdicts: [{ checkType: 'error', checkValue: '', verdict: 'fail', evidence: `Agent error: ${result.error}` }],
                 overallVerdict: 'fail',
             };
+            await persistAttemptResult({
+                i, attempt, test, meta, agent, model: input.model ?? 'default',
+                judgeResult, judgeMs, lastRunResult, currentWorkDir, secrets,
+            });
             break;
         }
 
@@ -340,15 +449,28 @@ for (let i = 0; i < tests.length; i++) {
         }));
         log.info(`  Overall: ${judgeResult.overallVerdict} (${judgeResult.verdicts.length} checks, ${judgeMs}ms)`);
         for (const v of judgeResult.verdicts) {
+            let header: string;
             if (v.checkType === 'eval-review') {
                 const gap = v.evalGapSeverity ?? 'noncritical';
                 const icon = gap === 'ok' ? '✓' : gap === 'critical' ? '✗' : '⚠';
-                log.info(`    ${icon} eval-review: ${gap} — ${v.evidence.slice(0, 80)}`);
+                header = `    ${icon} eval-review: ${gap}`;
             } else {
                 const icon = v.verdict === 'pass' ? '✓' : v.verdict === 'fail' ? '✗' : '⚠';
-                log.info(`    ${icon} ${v.checkType}: ${v.verdict} — ${v.evidence.slice(0, 80)}`);
+                header = `    ${icon} ${v.checkType}: ${v.verdict}`;
+            }
+            log.info(header);
+            const evidence = (v.evidence ?? '').trim();
+            if (evidence) {
+                for (const line of evidence.split('\n')) {
+                    log.info(`        ${line}`);
+                }
             }
         }
+
+        await persistAttemptResult({
+            i, attempt, test, meta, agent, model: input.model ?? 'default',
+            judgeResult, judgeMs, lastRunResult, currentWorkDir, secrets,
+        });
 
         if (judgeResult.overallVerdict === 'pass') break;
         attempt++;
