@@ -29,7 +29,7 @@
         "systemPrompt": {
             "title": "System Prompt",
             "type": "string",
-            "description": "Instructions for the agent at the start of each test. Default: 'You are an AI agent being evaluated. Always respond in English. Follow the instructions precisely.'",
+            "description": "Persistent instructions to deliver to the agent before each test's user prompt — e.g. file conventions, library recommendations, surface-specific hints. The runner prepends this content to every agent invocation's user prompt with a 'User task:' separator (NOT via the agent CLI's `--system-prompt` flag), so the same content is delivered identically across claude-code, codex, and opencode. When omitted or empty, the agent CLI uses its own built-in identity prompt — the realistic baseline for 'user opens this CLI with no customisation.'",
             "editor": "textarea",
             "nullable": true
         },
