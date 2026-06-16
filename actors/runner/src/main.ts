@@ -169,7 +169,14 @@ if (input.preAuthenticate !== false && apifyToken) {
         });
         log.info('Pre-authenticated apify-cli via APIFY_TOKEN.');
     } catch (err) {
-        log.warning(`Pre-authentication failed (continuing — agent will see unauthed state): ${(err as Error).message}`);
+        // Do NOT interpolate err.message — execFileSync embeds the full argv
+        // (including --token <APIFY_TOKEN>) in "Command failed: ...", which would
+        // leak the token into the run log. Prefer the CLI's own stderr (captured
+        // via pipe); fall back to the spawn error code (e.g. ENOENT). Neither
+        // contains the argv.
+        const e = err as { stderr?: Buffer | string; code?: string };
+        const detail = e.stderr ? String(e.stderr).trim() : (e.code ?? 'unknown error');
+        log.warning(`Pre-authentication failed (continuing — agent will see unauthed state): ${detail}`);
     }
 }
 
