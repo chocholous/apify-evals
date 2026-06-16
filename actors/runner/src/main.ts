@@ -106,6 +106,7 @@ interface RunnerInput {
     maxRetries?: number;
     maxTurns?: number;
     envVariables?: Record<string, string>;
+    preAuthenticate?: boolean;
     initPreset?: string;
     initBashScript?: string;
     mcpConfigJson?: Record<string, unknown>;
@@ -145,6 +146,31 @@ const scenarioSpan = startScenarioSpan(tracer, {
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
 if (parseWarnings) {
     for (const w of parseWarnings) log.warning(`[parse] ${w}`);
+}
+
+// Pre-authenticate the Apify CLI by populating ~/.apify/auth.json with APIFY_TOKEN.
+// This mirrors the state of every real Apify developer who has run 'apify login'
+// once on their machine. Without this, agents have to discover the apify-cli auth
+// flow themselves (which surfaces F11 in the eval pack's FINDINGS.md — agents often
+// ask the user for a token instead of using APIFY_TOKEN from env).
+//
+// Set input.preAuthenticate = false on a per-run/per-scenario basis to deliberately
+// measure the raw-unauthed signal (gap analytics).
+//
+// auth.json lives at ~/.apify/auth.json (see apify-cli consts.ts GLOBAL_CONFIGS_FOLDER).
+// The runner shares its home directory with the agent subprocess, so writing here
+// makes auth.json visible to whatever apify-cli the agent invokes.
+const apifyToken = secrets.APIFY_TOKEN ?? process.env.APIFY_TOKEN;
+if (input.preAuthenticate !== false && apifyToken) {
+    try {
+        execFileSync('apify', ['login', '--token', apifyToken], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, APIFY_TOKEN: apifyToken },
+        });
+        log.info('Pre-authenticated apify-cli via APIFY_TOKEN.');
+    } catch (err) {
+        log.warning(`Pre-authentication failed (continuing — agent will see unauthed state): ${(err as Error).message}`);
+    }
 }
 
 // Create isolated workspace so agent cannot modify runner's own files
