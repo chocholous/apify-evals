@@ -34,7 +34,7 @@ export type VerdictValue = 'pass' | 'fail' | 'warning' | 'unclear' | 'platform_f
 
 export type EvalGapSeverity = 'critical' | 'noncritical' | 'ok';
 
-export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error';
+export type CheckType = 'contains' | 'regex' | 'json-schema' | 'script' | 'jq' | 'llm-judge' | 'eval-review' | 'error' | 'preset-trajectory';
 
 export interface CheckVerdict {
     checkType: CheckType;
@@ -121,6 +121,8 @@ export interface JudgeMetrics {
 export interface AgentResult {
     agent: string;
     model: string;
+    /** The initPreset value used for this run (e.g. 'cli_only', 'mcp_only'). Populated by the runner; absent on synthesized error results. */
+    initPreset?: string;
     scenarioName: string;
     testIndex: number;
     testPrompt: string;

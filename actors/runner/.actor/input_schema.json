@@ -69,13 +69,17 @@
         "initPreset": {
             "title": "Tool Setup Preset",
             "type": "string",
-            "description": "Configures what tools the agent has access to. Use different presets to compare MCP vs CLI performance on the same scenario.",
-            "enum": ["none", "mcp_native", "cli_native", "mcpc"],
+            "description": "Configures what tools the agent has access to. 'None' is a safe default that logs which CLI tools are available and wires up mcpConfigJson if provided. The *_native presets MAKE a surface available without preventing the others; the *_only presets ENFORCE exclusive use of a single surface (PATH-shimming + MCP-config gating + trajectory-based hard reject of cross-surface leaks). Compare _native variants to measure 'does the agent prefer X when X is available'; compare _only variants to measure 'is surface X sufficient on its own'.",
+            "enum": ["none", "mcp_native", "cli_native", "mcpc", "api_native", "mcp_only", "cli_only", "api_only"],
             "enumTitles": [
-                "None — agent uses only built-in capabilities",
-                "MCP Native — agent gets MCP servers from config JSON",
-                "CLI Native — agent uses command-line tools (gh, apify-cli)",
-                "mcpc — MCP servers via mcpc CLI bridge"
+                "None — logs availability of apify/gh/curl/jq; wires up mcpConfigJson if provided",
+                "MCP Native — agent gets MCP servers from config JSON (CLI / REST still available)",
+                "CLI Native — agent uses command-line tools (MCP / REST still available)",
+                "mcpc — MCP servers via mcpc CLI bridge",
+                "API Native — agent uses raw HTTPS against api.apify.com (CLI / MCP still available)",
+                "MCP Only — exclusive MCP surface: CLI binaries shimmed off PATH, REST tooling blocked, in-agent WebFetch/WebSearch hard-rejected",
+                "CLI Only — exclusive CLI surface: curl/wget shimmed off PATH, MCP not loaded, in-agent WebFetch/WebSearch hard-rejected",
+                "API Only — exclusive REST surface: apify shimmed off PATH, MCP not loaded, any apify-cli or MCP tool use hard-rejected"
             ],
             "default": "none"
         },
@@ -90,18 +94,9 @@
         "mcpConfigJson": {
             "title": "MCP Config JSON",
             "type": "object",
-            "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables.",
+            "description": "MCP server configuration. Required for 'MCP Native' and 'mcpc' presets. Token placeholders like ${APIFY_TOKEN} are resolved from Environment Variables. Not prefilled: leaving it empty means no MCP servers (so the default 'none' preset stays a true no-MCP baseline) — see the README for an example config.",
             "editor": "json",
-            "nullable": true,
-            "prefill": {
-                "mcpServers": {
-                    "apify": {
-                        "command": "npx",
-                        "args": ["-y", "@apify/mcp-server"],
-                        "env": { "APIFY_TOKEN": "${APIFY_TOKEN}" }
-                    }
-                }
-            }
+            "nullable": true
         }
     },
     "required": ["scenario"]

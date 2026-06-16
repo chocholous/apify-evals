@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY } from '@apify-evals/shared';
-import type { AgentResult, PresetName, AgentRunResult, JudgeResult } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall } from '@apify-evals/shared';
+import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
 
 /**
  * List files in workspace up to 3 levels deep, skipping noisy dirs.
@@ -134,12 +134,15 @@ const agent = input.agent ?? 'claude-code';
 const maxRetries = input.maxRetries ?? 0;
 const maxTurns = input.maxTurns ?? 10;
 
+const preset = (input.initPreset ?? 'none') as PresetName;
+
 const tracer = initOtel();
 const scenarioSpan = startScenarioSpan(tracer, {
     scenarioName: meta.name,
     agent,
     model: input.model ?? 'default',
     testsTotal: tests.length,
+    initPreset: preset,
 });
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${meta.abortOnFailure}`);
@@ -152,7 +155,6 @@ const workspaceDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
 mkdirSync(workspaceDir, { recursive: true });
 log.info(`Workspace: ${workspaceDir}`);
 
-const preset = (input.initPreset ?? 'none') as PresetName;
 const initResult = runInitPreset({
     preset,
     customScript: input.initBashScript,
@@ -190,6 +192,8 @@ for (let i = 0; i < tests.length; i++) {
     let currentPluginDirs = [...pluginDirs];
     let currentMcpConfigPath = initResult.mcpConfigPath;
     let currentStrictMcp = initResult.strictMcpConfig;
+    let currentPathPrefix = initResult.pathPrefix;
+    let currentTrajectoryRejects: TrajectoryReject[] = initResult.trajectoryRejects;
 
     while (attempt <= maxRetries) {
         if (attempt > 0) {
@@ -205,6 +209,8 @@ for (let i = 0; i < tests.length; i++) {
             for (const msg of retryInit.presetLog) log.info(`  [retry-init] ${msg}`);
             currentMcpConfigPath = retryInit.mcpConfigPath;
             currentStrictMcp = retryInit.strictMcpConfig;
+            currentPathPrefix = retryInit.pathPrefix;
+            currentTrajectoryRejects = retryInit.trajectoryRejects;
             currentPluginDirs = [];
             if (existsSync(join(currentWorkDir, '.claude-plugin', 'plugin.json'))) {
                 currentPluginDirs.push(currentWorkDir);
@@ -234,6 +240,16 @@ for (let i = 0; i < tests.length; i++) {
         const agentPhaseStart = Date.now();
         log.info(`  [phase=agent] start`);
         let resultEventLogged = false;
+        // PATH shim: when a `*_only` preset has written disallowed-tool shims under
+        // an OS-tmpdir shim dir (outside the agent's writable cwd), prepend that dir
+        // to the agent subprocess's PATH so the shims take precedence over the
+        // image-installed binaries. Exporting
+        // PATH inside an init script doesn't propagate (each runScript is its own
+        // subshell); this is the only place where it reaches the agent.
+        const agentEnv: Record<string, string> = currentPathPrefix
+            ? { ...secrets, PATH: `${currentPathPrefix}:${process.env.PATH ?? ''}` }
+            : secrets;
+
         const result = await runAgent({
             agent,
             prompt: test.test,
@@ -241,7 +257,7 @@ for (let i = 0; i < tests.length; i++) {
             model: input.model,
             maxTurns,
             maxBudgetUsd: input.maxBudgetUsd,
-            env: secrets,
+            env: agentEnv,
             cwd: currentWorkDir,
             mcpConfigPath: currentMcpConfigPath ?? undefined,
             strictMcpConfig: currentStrictMcp,
@@ -395,6 +411,36 @@ for (let i = 0; i < tests.length; i++) {
         judgeMs = Date.now() - judgeStart;
         log.info(`  [phase=judge] end after ${Math.round(judgeMs / 1000)}s (verdict=${judgeResult.overallVerdict})`);
         endJudgeSpan(judgeSpan, judgeResult, judgeMs);
+
+        // Preset-injected trajectory enforcement (cross-surface leak detection).
+        // For `*_only` presets, the runInitPreset call returned a set of
+        // TrajectoryReject rules. Evaluate them against the normalized trajectory
+        // and append the matches as additional verdicts. A single 'fail' verdict
+        // here flips the overall to fail — that's how exclusivity is enforced.
+        if (currentTrajectoryRejects.length > 0) {
+            const trajectoryRejectVerdicts: CheckVerdict[] = [];
+            for (const reject of currentTrajectoryRejects) {
+                if (reject.predicate(result.trajectory)) {
+                    const verdict: VerdictValue = reject.severity === 'warning' ? 'warning' : 'fail';
+                    trajectoryRejectVerdicts.push({
+                        checkType: 'preset-trajectory',
+                        checkValue: reject.name,
+                        verdict,
+                        evidence: reject.reason,
+                    });
+                    log.warning(`  [preset-trajectory] ${verdict.toUpperCase()} ${reject.name}: ${reject.reason}`);
+                }
+            }
+            if (trajectoryRejectVerdicts.length > 0) {
+                judgeResult = {
+                    ...judgeResult,
+                    verdicts: [...judgeResult.verdicts, ...trajectoryRejectVerdicts],
+                    overallVerdict: computeOverall([...judgeResult.verdicts, ...trajectoryRejectVerdicts]),
+                };
+                log.info(`  Overall after preset-trajectory rejects: ${judgeResult.overallVerdict}`);
+            }
+        }
+
         allJudgeLines.push(JSON.stringify({
             testIndex: i,
             checkpoint: test.checkpoint,
@@ -435,6 +481,7 @@ for (let i = 0; i < tests.length; i++) {
     const agentResult: AgentResult = {
         agent,
         model: input.model ?? 'default',
+        initPreset: preset,
         scenarioName: meta.name,
         testIndex: i,
         testPrompt: test.test,

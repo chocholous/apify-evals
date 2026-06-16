@@ -501,7 +501,7 @@ export async function judgeAllChecks(
     return { verdicts, overallVerdict };
 }
 
-function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
+export function computeOverall(verdicts: CheckVerdict[]): VerdictValue {
     // eval-review checks grade the eval framework itself, not the agent output
     const agentVerdicts = verdicts.filter((v) => v.checkType !== 'eval-review');
     // No agent-targeting checks ⇒ verdict is undefined, not a free pass.
