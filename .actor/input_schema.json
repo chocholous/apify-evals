@@ -66,6 +66,13 @@
             "isSecret": true,
             "nullable": true
         },
+        "preAuthenticate": {
+            "title": "Pre-authenticate Apify CLI",
+            "type": "boolean",
+            "description": "If true (default), the runner populates ~/.apify/auth.json with APIFY_TOKEN via 'apify login --token' BEFORE the agent starts. This mirrors what every real Apify developer has after running 'apify login' once on their machine — 'apify push' from the agent will work without the agent having to discover auth flow. Set to false for raw-unauthed measurement (the agent has to figure out auth on its own — surfaces F11 in the eval pack's FINDINGS.md).",
+            "default": true,
+            "sectionCaption": "Authentication"
+        },
         "initPreset": {
             "title": "Tool Setup Preset",
             "type": "string",
