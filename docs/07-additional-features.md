@@ -223,8 +223,12 @@ Každý agent (a každý retry) běží v izolovaném `/tmp/eval-workspace-<uuid
 Důsledky:
 - Script checkpointy dědí ten samý cwd → vidí soubory, které agent vytvořil.
 - Stažené Apify datasety jdou do `<workspace>/eval-datasets/<id>.json` (viz Judge enhancements).
-- Runner zapisuje do workspace tři pomocné soubory pro script checkpointy a judge — `.eval-trajectory.json`, `eval-checkpoint.json`, `eval-check-results.json` (viz Output schema extensions).
-- Retry s `maxRetries > 0` vytvoří nový workspace s novým uuid — init script i plugin detection se spustí znovu.
+- Runner zapisuje vlastní bookkeeping soubory do SIBLING dir `/tmp/eval-meta-<uuid8>/`, NIKDY do workspace:
+    - `trajectory.json` — raw trajectory data po agentově běhu (psáno z `main.ts`)
+    - `checkpoint.json` + `check-results.json` — parsed checkpoint spec + judged verdicts (psáno z `judge.ts`)
+    Proč mimo workspace: (a) `apify push` bundluje jen workspace, takže runner soubory nemohou leakovat do deployed Actoru; (b) workspace zůstává čistý — žádné framework artefakty se nemísí s agentovými, takže měření (např. "vytvořil agent `.actorignore`?") nejsou kontaminována.
+- Script + jq checkpointy dostanou cestu k meta dir přes `$EVAL_META_DIR` environment variable, kterou runner injektuje JEN do checkpoint subprocessu (ne do agentova). Agent meta dir nevidí — runner je pro něj neviditelný. Příklad použití v checkpoint skriptu: `cat "$EVAL_META_DIR/check-results.json"`.
+- Retry s `maxRetries > 0` vytvoří nový workspace **a nový meta dir** (oba sdílí UUID) — init script i plugin detection se spustí znovu.
 
 Tahle konvence není v původním plánu — vznikla při Day 4 cleanup, ale autoři script checkpointů ji potřebují znát, aby věděli kde co hledat.
 

@@ -11,6 +11,7 @@ import { SCRIPT_TIMEOUT_MS, JQ_TIMEOUT_MS, JUDGE_MODEL_MAP } from './constants.j
 import { judgeLlm } from './agents/claude.js';
 import type { JudgeLlmResult } from './agents/claude.js';
 import { buildChildEnv } from './agents/apify-env.js';
+import { ensureMetaDir, checkpointPath, checkResultsPath, META_DIR_ENV_VAR } from './runner-files.js';
 
 export interface CheckpointSpec {
     type: CheckType;
@@ -141,9 +142,36 @@ function parseCheckpointLine(line: string): CheckpointSpec | null {
 
 export interface ScriptJudgeOptions {
     workDir?: string;
+    /**
+     * Runner's private bookkeeping directory (a SIBLING of workDir, e.g.
+     * `/tmp/eval-meta-<uuid>`). When provided, the runner-written artefacts
+     * (trajectory, checkpoint, check-results) live here — outside the agent's
+     * workspace — and the path is exposed to the checkpoint subprocess via
+     * the `EVAL_META_DIR` environment variable (NOT inherited by the agent).
+     * See shared/src/runner-files.ts for the file conventions.
+     */
+    metaDir?: string;
     timeoutMs?: number;
     env?: Record<string, string>;
     events?: unknown[];
+}
+
+/**
+ * Build the env for a checkpoint subprocess: same as `buildChildEnv` (strips
+ * Apify runtime vars to prevent storage pollution) plus inject `EVAL_META_DIR`
+ * so checkpoint scripts can locate runner-written artefacts via a stable path.
+ * The agent subprocess does NOT use this overlay — it calls `buildChildEnv`
+ * directly, so the agent never sees `EVAL_META_DIR` and the runner stays
+ * invisible from the agent's perspective.
+ */
+function buildCheckpointEnv(
+    extraEnv: Record<string, string> | undefined,
+    workDir: string | undefined,
+    metaDir: string | undefined,
+): NodeJS.ProcessEnv {
+    const env = buildChildEnv(extraEnv, workDir);
+    if (metaDir) env[META_DIR_ENV_VAR] = metaDir;
+    return env;
 }
 
 function buildEvidence(stdout: string, stderr: string, fallback: string): string {
@@ -160,7 +188,7 @@ function judgeScript(agentOutput: string, script: string, options?: ScriptJudgeO
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: buildChildEnv(options?.env, options?.workDir),
+            env: buildCheckpointEnv(options?.env, options?.workDir, options?.metaDir),
         });
         const evidence = stdout.toString().trim() || 'Script exited with code 0';
         return { checkType: 'script', checkValue: script, verdict: 'pass', evidence };
@@ -192,7 +220,7 @@ function judgeJq(expression: string, events: unknown[], options?: ScriptJudgeOpt
             timeout: timeoutMs,
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: '/bin/bash',
-            env: buildChildEnv(options?.env, options?.workDir),
+            env: buildCheckpointEnv(options?.env, options?.workDir, options?.metaDir),
         });
         const evidence = stdout.toString().trim() || 'jq expression returned truthy';
         return { checkType: 'jq', checkValue: expression, verdict: 'pass', evidence };
@@ -317,6 +345,14 @@ export interface JudgeOptions {
     env?: Record<string, string>;
     judgeModel?: string;
     workDir?: string;
+    /**
+     * Runner's private bookkeeping directory (sibling of workDir). When set,
+     * judgeAllChecks writes runner artefacts (`checkpoint.json`,
+     * `check-results.json`) here instead of into the agent's workspace, and
+     * exposes the path to checkpoint subprocesses via `$EVAL_META_DIR` so
+     * scenario scripts can locate them. See `shared/src/runner-files.ts`.
+     */
+    metaDir?: string;
     scriptTimeoutMs?: number;
     events?: Array<{ type: string; message?: { content: Array<{ type: string; text?: string; name?: string; input?: unknown }> } }>;
     onJudgeRawLine?: (line: string) => void;
@@ -398,6 +434,7 @@ export async function judgeAllChecks(
 
     const scriptOptions: ScriptJudgeOptions = {
         workDir: options?.workDir,
+        metaDir: options?.metaDir,
         timeoutMs: options?.scriptTimeoutMs,
         env: options?.env,
         events: options?.events,
@@ -408,13 +445,24 @@ export async function judgeAllChecks(
         verdicts.push(result);
     }
 
-    if (options?.workDir) {
+    // Persist the parsed checkpoint spec + verdicts to the runner's private
+    // metaDir (outside the agent's workspace) so they don't leak into the
+    // agent's deployed Actor source when `apify push` runs. Checkpoint scripts
+    // that need to read these files locate them via $EVAL_META_DIR (set in the
+    // checkpoint subprocess env by buildCheckpointEnv).
+    //
+    // Backward compat: if no metaDir is provided (legacy callers), we skip the
+    // writes entirely rather than fall back to workDir — falling back would
+    // re-introduce the workspace-leak the metaDir design fixes. Callers that
+    // want the artefacts persisted MUST provide metaDir.
+    if (options?.metaDir) {
         try {
-            writeFileSync(join(options.workDir, 'eval-checkpoint.json'), JSON.stringify(
+            ensureMetaDir(options.metaDir);
+            writeFileSync(checkpointPath(options.metaDir), JSON.stringify(
                 parsed.checks.map(c => ({ type: c.type, value: c.value, severity: c.severity })),
                 null, 2,
             ));
-            writeFileSync(join(options.workDir, 'eval-check-results.json'), JSON.stringify(
+            writeFileSync(checkResultsPath(options.metaDir), JSON.stringify(
                 verdicts.map(v => ({ checkType: v.checkType, verdict: v.verdict, evidence: v.evidence, checkValue: v.checkValue })),
                 null, 2,
             ));

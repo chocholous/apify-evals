@@ -9,6 +9,15 @@ export { initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, 
 export { spansToOtlpJson, BufferSpanExporter } from './otel-exporter.js';
 export { downloadApifyDatasets, extractDatasetIdsFromEvents } from './apify-datasets.js';
 export type { DatasetDownloadResult } from './apify-datasets.js';
+export {
+    RUNNER_FILES,
+    META_DIR_ENV_VAR,
+    metaDirFor,
+    ensureMetaDir,
+    trajectoryPath,
+    checkpointPath,
+    checkResultsPath,
+} from './runner-files.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
 export type { VerdictValue, CheckVerdict, CheckType, AgentResult, RunMetrics, EfficiencyMetrics, TrajectoryMetrics, ToolCallDetail, JudgeMetrics, AgentEvent, ModelUsage, AgentType, HungWarning, EvalGapSeverity } from './types.js';
