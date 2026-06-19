@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, metaDirFor, ensureMetaDir, trajectoryPath } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, allocateMetaDir, trajectoryPath } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
 
 /**
@@ -192,8 +192,7 @@ if (input.preAuthenticate !== false && apifyToken) {
 // the `EVAL_META_DIR` env var, injected into checkpoint subprocesses only.
 const workspaceDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
 mkdirSync(workspaceDir, { recursive: true });
-const workspaceMetaDir = metaDirFor(workspaceDir);
-ensureMetaDir(workspaceMetaDir);
+const workspaceMetaDir = allocateMetaDir();
 log.info(`Workspace: ${workspaceDir}`);
 log.info(`Meta dir:  ${workspaceMetaDir}`);
 
@@ -242,9 +241,8 @@ for (let i = 0; i < tests.length; i++) {
         if (attempt > 0) {
             log.info(`  Retry ${attempt}/${maxRetries} — fresh workspace`);
             currentWorkDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
-            currentMetaDir = metaDirFor(currentWorkDir);
             mkdirSync(currentWorkDir, { recursive: true });
-            ensureMetaDir(currentMetaDir);
+            currentMetaDir = allocateMetaDir();
             const retryInit = runInitPreset({
                 preset,
                 customScript: input.initBashScript,
