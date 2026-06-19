@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,6 +24,11 @@ import { join } from 'node:path';
  * receive the meta-dir path via the `EVAL_META_DIR` environment variable,
  * which the runner injects into checkpoint subprocesses (and only checkpoint
  * subprocesses — NOT into the agent's env).
+ *
+ * The runner deliberately stays USE-CASE AGNOSTIC. It records generic data
+ * (timing anchors, structured trajectory, checkpoint specs, verdicts) and
+ * lets scenarios decide what to do with it. The runner does NOT know about
+ * "Actors", "the user's account", or any other scenario-specific concept.
  */
 
 /** Filenames the runner writes inside the meta dir. */
@@ -31,6 +36,7 @@ export const RUNNER_FILES = {
     trajectory: 'trajectory.json',
     checkpoint: 'checkpoint.json',
     checkResults: 'check-results.json',
+    runnerStarted: 'runner-started.json',
 } as const;
 
 /** Env-var name that points checkpoint subprocesses at the meta dir. */
@@ -67,4 +73,70 @@ export function checkpointPath(metaDir: string): string {
 /** Absolute path to the runner's check-results file inside `metaDir`. */
 export function checkResultsPath(metaDir: string): string {
     return join(metaDir, RUNNER_FILES.checkResults);
+}
+
+/**
+ * Absolute path to the single-clock timestamp anchor file inside `metaDir`.
+ *
+ * The runner writes this at startup. It contains the Apify-server-clock
+ * `startedAt` of the runner Actor's own run — ISO 8601 with millisecond
+ * precision, anchored to a SINGLE clock (the Apify backend's). Checkpoint
+ * scripts compare any other Apify-clock timestamp (e.g. a target resource's
+ * `createdAt`) against this anchor to answer "did this resource appear
+ * during this eval run?" — without any mtime, filesystem-clock, or local
+ * comparison.
+ *
+ * Use via `$EVAL_META_DIR/<RUNNER_FILES.runnerStarted>` from checkpoint
+ * scripts. The recording is use-case agnostic: it's just a timestamp. What
+ * to compare it against is up to the scenario.
+ */
+export function runnerStartedPath(metaDir: string): string {
+    return join(metaDir, RUNNER_FILES.runnerStarted);
+}
+
+/**
+ * Fetch the Apify-server-clock `startedAt` for the runner Actor's OWN run.
+ * Hits `GET /v2/actor-runs/<actorRunId>` and pulls `data.startedAt`. Returns
+ * the ISO 8601 string with the source documented.
+ *
+ * Non-fatal on failure — the caller logs a warning. Scenarios that depend
+ * on the anchor will see the file missing and can choose how to degrade.
+ */
+export async function fetchRunnerStartedAt(args: {
+    actorRunId: string;
+    apifyToken: string;
+    apiBase?: string;
+}): Promise<{ apifyRunStartedAt: string } | { error: string }> {
+    const apiBase = args.apiBase ?? 'https://api.apify.com';
+    const url = `${apiBase}/v2/actor-runs/${args.actorRunId}`;
+    try {
+        const resp = await fetch(url, {
+            headers: { Authorization: `Bearer ${args.apifyToken}` },
+        });
+        if (!resp.ok) {
+            const body = await resp.text().catch(() => '<no body>');
+            return { error: `HTTP ${resp.status} from ${url}: ${body.slice(0, 200)}` };
+        }
+        const json = await resp.json() as { data?: { startedAt?: string } };
+        const startedAt = json.data?.startedAt;
+        if (typeof startedAt !== 'string' || startedAt.length === 0) {
+            return { error: `Apify API response missing data.startedAt for run ${args.actorRunId}` };
+        }
+        return { apifyRunStartedAt: startedAt };
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/**
+ * Write the runner-started timestamp anchor file into `metaDir`. The file's
+ * shape is JSON so future fields can be added without breaking format.
+ */
+export function writeRunnerStartedFile(metaDir: string, apifyRunStartedAt: string): string {
+    const path = runnerStartedPath(metaDir);
+    writeFileSync(path, JSON.stringify({
+        apifyRunStartedAt,
+        source: 'data.startedAt from GET /v2/actor-runs/<runner-run-id>',
+    }, null, 2));
+    return path;
 }

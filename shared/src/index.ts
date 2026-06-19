@@ -17,6 +17,9 @@ export {
     trajectoryPath,
     checkpointPath,
     checkResultsPath,
+    runnerStartedPath,
+    fetchRunnerStartedAt,
+    writeRunnerStartedFile,
 } from './runner-files.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';

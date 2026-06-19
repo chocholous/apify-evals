@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, allocateMetaDir, trajectoryPath } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, allocateMetaDir, trajectoryPath, fetchRunnerStartedAt, writeRunnerStartedFile } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
 
 /**
@@ -210,6 +210,40 @@ const workspaceMetaDir = allocateMetaDir();
 log.info(`Workspace: ${workspaceDir}`);
 log.info(`Meta dir:  ${workspaceMetaDir}`);
 
+// Record the runner's own Apify-server-clock `startedAt` timestamp ONCE at
+// startup. Written to `<metaDir>/runner-started.json` and exposed to
+// checkpoint subprocesses via $EVAL_META_DIR. This is a generic single-clock
+// anchor — scenarios that need to verify "did this resource appear during
+// this eval run?" compare any Apify-clock timestamp against it. The runner
+// stays use-case agnostic; recording a timestamp does not encode any opinion
+// about Actors, datasets, runs, or anything else scenario-specific.
+//
+// Non-fatal on failure — scenarios that depend on the anchor will see the
+// file missing and can choose how to degrade.
+const actorRunId = process.env.APIFY_ACTOR_RUN_ID ?? '';
+let runnerStartedAt: string | undefined;
+if (apifyToken && actorRunId) {
+    const r = await fetchRunnerStartedAt({ actorRunId, apifyToken });
+    if ('error' in r) {
+        log.warning(`Failed to fetch runner startedAt (single-clock anchor unavailable; scenarios depending on it will degrade): ${r.error}`);
+    } else {
+        runnerStartedAt = r.apifyRunStartedAt;
+        writeRunnerStartedFile(workspaceMetaDir, runnerStartedAt);
+        // Also mirror to KVS so external tooling (e.g. the local
+        // /run-eval-scenario skill) can read the anchor without entering
+        // the runner container.
+        await Actor.setValue('RUNNER-STARTED-AT', {
+            apifyRunStartedAt: runnerStartedAt,
+            source: 'data.startedAt from GET /v2/actor-runs/<runner-run-id>',
+        }, { contentType: 'application/json' });
+        log.info(`[runner-started] ${runnerStartedAt} (single-clock anchor for checkpoint scripts)`);
+    }
+} else if (!apifyToken) {
+    log.warning('No APIFY_TOKEN — skipping runner-startedAt anchor. Scenarios depending on it will degrade.');
+} else {
+    log.warning('No APIFY_ACTOR_RUN_ID env var (local dev?) — skipping runner-startedAt anchor.');
+}
+
 const initResult = runInitPreset({
     preset,
     customScript: input.initBashScript,
@@ -257,6 +291,13 @@ for (let i = 0; i < tests.length; i++) {
             currentWorkDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
             mkdirSync(currentWorkDir, { recursive: true });
             currentMetaDir = allocateMetaDir();
+            // Re-write the runner-startedAt anchor into the retry's fresh
+            // metaDir so checkpoint scripts find it at $EVAL_META_DIR
+            // regardless of which attempt is running. No re-fetch needed —
+            // the runner's startedAt doesn't change across retries.
+            if (runnerStartedAt) {
+                writeRunnerStartedFile(currentMetaDir, runnerStartedAt);
+            }
             const retryInit = runInitPreset({
                 preset,
                 customScript: input.initBashScript,
