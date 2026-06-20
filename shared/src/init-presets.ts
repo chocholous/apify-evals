@@ -91,6 +91,23 @@ function runScript(script: string, workDir: string, label: string): { success: b
 }
 
 /**
+ * Apify-platform host pattern shared by trajectory checks and the runtime
+ * host-aware shim. Matches the three hosts that constitute the "Apify REST
+ * surface" the `cli_only` / `mcp_only` / `api_only` presets discriminate on.
+ *
+ * Word-boundary anchors prevent false positives on substrings inside other
+ * domains (e.g. `notapi.apify.com.evil.example`).
+ */
+const REGEX_APIFY_PLATFORM_HOSTS = /\b(?:api|console|mcp)\.apify\.com\b/i;
+
+/**
+ * Comma-separated string of Apify-platform hosts — embedded into shell shim
+ * scripts so they can do their own host check. Keep in sync with
+ * REGEX_APIFY_PLATFORM_HOSTS; the test suite asserts symmetry.
+ */
+const APIFY_PLATFORM_HOSTS_LIST = ['api.apify.com', 'console.apify.com', 'mcp.apify.com'];
+
+/**
  * Create a PATH-shim directory with no-op shims for each given tool. Each shim
  * prints an error to stderr and exits 127, mimicking "command not found"
  * semantics. Returns the absolute directory path; the caller must prepend this
@@ -121,6 +138,65 @@ exit 127
     return shimDir;
 }
 
+/**
+ * Add HOST-AWARE wrappers for `curl`/`wget` (or any tool) into an existing
+ * shim directory. Each wrapper inspects its arguments: if any argument
+ * contains an Apify-platform host (`api.apify.com` / `console.apify.com` /
+ * `mcp.apify.com`), it blocks with exit 127 and a preset-specific error;
+ * otherwise it execs the real binary unchanged.
+ *
+ * Use this together with `setupPathShim` for `cli_only` / `mcp_only` presets
+ * so the agent can still use `curl` / `wget` to inspect scraping targets
+ * (e.g. find CSS selectors on the live page) while Apify-platform REST is
+ * still forbidden — matching the trajectory checks' host-aware semantics.
+ * See FRAMEWORK-FINDINGS.md EF4.
+ */
+function addHostAwareShims(shimDir: string, tools: string[], preset: PresetName, allowedSurface: string): void {
+    // Shell-glob patterns ORed together. The shim scans every argument for
+    // these substrings; matching any one is a block. Keep in sync with the
+    // REGEX_APIFY_PLATFORM_HOSTS regex used by the trajectory checks.
+    const hostPatterns = APIFY_PLATFORM_HOSTS_LIST.map((h) => `*${h}*`).join('|');
+    const hostList = APIFY_PLATFORM_HOSTS_LIST.join(', ');
+    for (const tool of tools) {
+        const shimPath = join(shimDir, tool);
+        // POSIX `sh` portable. Resolves the real binary by stripping the shim
+        // dir from PATH before calling `command -v`, then `exec`s it with the
+        // original args. If the real binary can't be found, exits 127 with a
+        // diagnostic — same as the blanket shim would.
+        const body = `#!/bin/sh
+# eval-shim host-aware wrapper for '${tool}' under preset '${preset}'.
+# Blocks requests to Apify-platform hosts; passes through everything else.
+SHIM_DIR='${shimDir}'
+
+for arg in "$@"; do
+    case "$arg" in
+        ${hostPatterns})
+            echo "'${tool}' to an Apify-platform host (${hostList}) is disabled for the '${preset}' eval preset. Use the ${allowedSurface} surface for Apify-platform interaction. Requests to other hosts are allowed." >&2
+            echo "(Matched argument: $arg)" >&2
+            exit 127
+            ;;
+    esac
+done
+
+# Find the real ${tool} binary by stripping the shim dir from PATH first;
+# otherwise \`command -v ${tool}\` would resolve back to this wrapper.
+ORIG_PATH="$PATH"
+PATH=$(echo "$ORIG_PATH" | awk -v RS=: -v shim="$SHIM_DIR" 'NR > 1 { printf ":" } $0 != shim { printf "%s", $0 }')
+REAL=$(command -v ${tool} 2>/dev/null)
+PATH="$ORIG_PATH"
+
+if [ -z "$REAL" ] || [ "$REAL" = "${shimDir}/${tool}" ]; then
+    echo "real '${tool}' binary not found on PATH outside the eval shim. This is a runner-environment problem; the shim wrapper cannot proceed." >&2
+    exit 127
+fi
+
+exec "$REAL" "$@"
+`;
+        writeFileSync(shimPath, body);
+        chmodSync(shimPath, 0o755);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Trajectory rejection rules
 // ---------------------------------------------------------------------------
@@ -140,15 +216,6 @@ exit 127
 // (`apify`) invocations. The `(?:[\w./-]*\/)?` segment allows an optional
 // path-with-slashes prefix or nothing at all.
 const REGEX_APIFY_CLI = /(?:^|[\s;|&(])(?:[\w./-]*\/)?apify(?:-cli)?(?:\s|$)/;
-const REGEX_CURL_OR_WGET = /(?:^|[\s;|&(])(?:[\w./-]*\/)?(?:curl|wget)(?:\s|$)/;
-const REGEX_APIFY_HOST = /api\.apify\.com/i;
-// Catches inline -e/-c invocations and `<runtime> <file>` only when the
-// HTTP-library substring appears in the bash command. File-execution where the
-// HTTP library is INSIDE the script file (not in the bash command) is not
-// detected by pattern-matching — that would require content scanning.
-// Documented as a known gap; an egress firewall is the complete solution.
-const REGEX_NODE_HTTP_EVAL = /\b(?:node|bun|deno|tsx|ts-node)\b.*(?:fetch\(|http\.|https\.)/;
-const REGEX_PYTHON_HTTP_EVAL = /\b(?:python|python3|python3\.\d+|pypy)\b.*(?:requests\.|http\.client|urllib|httpx)/;
 
 const REJECT_APIFY_CLI_VIA_BASH: TrajectoryReject = {
     name: 'no-cli-surface',
@@ -159,25 +226,51 @@ const REJECT_APIFY_CLI_VIA_BASH: TrajectoryReject = {
 
 const REJECT_REST_VIA_SHELL: TrajectoryReject = {
     name: 'no-rest-surface-via-shell',
-    reason: 'Agent invoked `curl`/`wget` or referenced `api.apify.com` from a shell command — the active preset disallows the REST API surface.',
+    reason: 'Agent made an HTTP request targeting an Apify-platform host (api.apify.com / console.apify.com / mcp.apify.com) from a shell command — the active preset disallows the REST API surface. (curl/wget/fetch to OTHER hosts is allowed; only Apify-platform calls are blocked.)',
     severity: 'fail',
-    predicate: (t) =>
-        t.commandsExecuted.some(
-            (cmd) => REGEX_CURL_OR_WGET.test(cmd) || REGEX_APIFY_HOST.test(cmd) || REGEX_NODE_HTTP_EVAL.test(cmd) || REGEX_PYTHON_HTTP_EVAL.test(cmd),
-        ),
+    // Host-aware: fires only when a shell command references an Apify-platform
+    // host. Catches curl/wget/`node -e "fetch('https://api.apify.com/...')"`/
+    // python `requests.get('...api.apify.com...')` and bare URL mentions like
+    // `echo https://api.apify.com > note`. Does NOT fire on curl/wget against
+    // scraping targets (e.g. inspecting target HTML to find CSS selectors),
+    // which is normal scraper-dev behavior the agent should remain free to do.
+    // See FRAMEWORK-FINDINGS.md EF4 for the prior over-broad version and why
+    // it produced false-positive verdict failures.
+    predicate: (t) => t.commandsExecuted.some((cmd) => REGEX_APIFY_PLATFORM_HOSTS.test(cmd)),
 };
 
 const REJECT_REST_VIA_INAGENT_TOOLS: TrajectoryReject = {
     name: 'no-rest-surface-via-builtin-tools',
-    reason: 'Agent used the built-in `WebFetch` or `WebSearch` tool — the active preset disallows the REST API surface (these tools make direct HTTPS calls).',
+    reason: 'Agent used the built-in `WebFetch` or `WebSearch` tool to reach an Apify-platform host (api.apify.com / console.apify.com / mcp.apify.com) — the active preset disallows the REST API surface. (WebFetch/WebSearch to OTHER hosts is allowed.)',
     severity: 'fail',
-    // Case-insensitive: claude-code emits `WebFetch`/`WebSearch`, opencode emits
-    // lowercase (`webfetch`/`websearch`). Matching exact-case would silently miss
-    // opencode and break the "agent-agnostic" guarantee.
-    predicate: (t) => t.uniqueToolsUsed.some((n) => {
-        const tool = n.toLowerCase();
-        return tool === 'webfetch' || tool === 'websearch';
-    }),
+    // Host-aware: inspects toolCallDetails for WebFetch/WebSearch invocations
+    // whose URL (or, for WebSearch, query) mentions an Apify-platform host.
+    // Falls back to uniqueToolsUsed for backward compat in case toolCallDetails
+    // is empty (older trajectory emitters).
+    //
+    // Case-insensitive tool match: claude-code emits `WebFetch`/`WebSearch`,
+    // opencode emits lowercase. The agent-agnostic guarantee requires both.
+    predicate: (t) => {
+        // Primary path: have detailed tool calls — inspect URLs.
+        if (t.toolCallDetails && t.toolCallDetails.length > 0) {
+            return t.toolCallDetails.some((d) => {
+                const tool = (d.tool || '').toLowerCase();
+                if (tool !== 'webfetch' && tool !== 'websearch') return false;
+                const input = (d.input ?? {}) as Record<string, unknown>;
+                const url = typeof input.url === 'string' ? input.url : '';
+                const query = typeof input.query === 'string' ? input.query : '';
+                return REGEX_APIFY_PLATFORM_HOSTS.test(url) || REGEX_APIFY_PLATFORM_HOSTS.test(query);
+            });
+        }
+        // Fallback: no detailed tool calls available — we can't inspect URLs,
+        // so we can't distinguish Apify-platform calls from anything else.
+        // In that case, abstain (return false). The previous blanket "any
+        // WebFetch = fail" produced too many false positives; opting out on
+        // missing data is safer than failing arbitrarily. The trajectory
+        // emitter is expected to populate toolCallDetails on every run, so
+        // this fallback should rarely trigger in practice.
+        return false;
+    },
 };
 
 const REJECT_MCP_VIA_TOOL: TrajectoryReject = {
@@ -262,8 +355,15 @@ export function runInitPreset(ctx: InitContext): InitResult {
                 log.push(`mcp_only: wrote MCP config to ${mcpConfigPath} (strict)`);
             }
 
-            pathPrefix = setupPathShim(ctx.workDir, ['apify', 'curl', 'wget'], 'mcp_only', 'MCP');
-            log.push(`mcp_only: PATH-shimmed apify/curl/wget under ${pathPrefix}`);
+            // `apify` is blanket-blocked (the agent has no MCP-equivalent CLI
+            // path that should ever be allowed under mcp_only). `curl`/`wget`
+            // are host-aware: blocked when reaching Apify-platform hosts,
+            // passed through for anything else (scraping targets, npm
+            // registry, GitHub, etc.). Both shim types live in one PATH dir
+            // for caller simplicity. See FRAMEWORK-FINDINGS.md EF4.
+            pathPrefix = setupPathShim(ctx.workDir, ['apify'], 'mcp_only', 'MCP');
+            addHostAwareShims(pathPrefix, ['curl', 'wget'], 'mcp_only', 'MCP');
+            log.push(`mcp_only: PATH-shimmed apify (blanket) + host-aware curl/wget under ${pathPrefix}`);
 
             trajectoryRejects.push(
                 REJECT_APIFY_CLI_VIA_BASH,
@@ -289,8 +389,13 @@ export function runInitPreset(ctx: InitContext): InitResult {
             const result = runScript(script, ctx.workDir, 'cli_only');
             log.push(`cli_only: ${result.output}`);
 
-            pathPrefix = setupPathShim(ctx.workDir, ['curl', 'wget'], 'cli_only', 'apify-cli');
-            log.push(`cli_only: PATH-shimmed curl/wget under ${pathPrefix}`);
+            // Host-aware shim for curl/wget: block Apify-platform hosts only,
+            // pass through requests to scraping targets and other non-Apify
+            // hosts. Empty `tools` to setupPathShim creates the dir; the
+            // host-aware shims fill it. See FRAMEWORK-FINDINGS.md EF4.
+            pathPrefix = setupPathShim(ctx.workDir, [], 'cli_only', 'apify-cli');
+            addHostAwareShims(pathPrefix, ['curl', 'wget'], 'cli_only', 'apify-cli');
+            log.push(`cli_only: PATH-shimmed curl/wget (host-aware) under ${pathPrefix}`);
 
             if (ctx.mcpConfigJson) {
                 log.push(

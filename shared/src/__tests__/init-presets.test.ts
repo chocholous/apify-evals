@@ -198,32 +198,59 @@ describe('runInitPreset', () => {
             expect(cliReject!.predicate(makeTrajectory({ commandsExecuted: ['cat /tmp/apifyrc'] }))).toBe(false);
         });
 
-        it('trajectory rejects detect: REST API via shell tools', () => {
+        it('trajectory rejects detect: REST API via shell tools — HOST-AWARE (Apify-platform only)', () => {
             const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
             const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
             expect(restReject).toBeDefined();
+            // Hits — commands targeting Apify-platform hosts
             expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl https://api.apify.com/v2/users/me'] }))).toBe(true);
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['wget some-url'] }))).toBe(true);
-            // Indirect HTTP via inline node/python is also caught
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['node -e "fetch(\'https://...\')"'] }))).toBe(true);
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['python -c "import requests; requests.get(\'...\')"'] }))).toBe(true);
-            // Any mention of api.apify.com in a command, even in another tool
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['wget https://console.apify.com/foo'] }))).toBe(true);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl https://mcp.apify.com/v0/things'] }))).toBe(true);
+            // Indirect HTTP via inline node/python with Apify-platform host is caught
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['node -e "fetch(\'https://api.apify.com/v2/acts\')"'] }))).toBe(true);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['python -c "import requests; requests.get(\'https://api.apify.com\')"'] }))).toBe(true);
+            // Bare mention in a command also counts (echo / cat / etc.)
             expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['echo "see https://api.apify.com" > note'] }))).toBe(true);
-            // Misses — no REST shell signals
+            // EF4 fix — scraping-target curl is NO LONGER a false positive
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl -s https://warehouse-theme-metal.myshopify.com/collections/all'] }))).toBe(false);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['wget https://example.com/foo'] }))).toBe(false);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['node -e "fetch(\'https://github.com/api\')"'] }))).toBe(false);
+            // Misses — no shell signals
             expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['npm install', 'mkdir src'] }))).toBe(false);
         });
 
-        it('trajectory rejects detect: in-agent WebFetch / WebSearch', () => {
+        it('trajectory rejects detect: in-agent WebFetch / WebSearch — HOST-AWARE', () => {
             const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
             const builtinReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-builtin-tools');
             expect(builtinReject).toBeDefined();
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebFetch'] }))).toBe(true);
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebSearch'] }))).toBe(true);
-            // Case-insensitive so opencode's lowercase tool names are also caught
-            // (agent-agnostic guarantee — claude-code emits WebFetch, opencode webfetch).
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['webfetch'] }))).toBe(true);
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['websearch'] }))).toBe(true);
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['Bash', 'Read'] }))).toBe(false);
+            // Hits — WebFetch to an Apify-platform host
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebFetch', turn: 1, input: { url: 'https://api.apify.com/v2/users/me' } }],
+            }))).toBe(true);
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebFetch', turn: 1, input: { url: 'https://console.apify.com/account/integrations' } }],
+            }))).toBe(true);
+            // Case-insensitive tool match — opencode's lowercase tools also caught
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'webfetch', turn: 1, input: { url: 'https://mcp.apify.com/v0/foo' } }],
+            }))).toBe(true);
+            // WebSearch query that mentions an Apify-platform host
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebSearch', turn: 1, input: { query: 'how to use api.apify.com' } }],
+            }))).toBe(true);
+            // EF4 fix — WebFetch to scraping targets no longer fires
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebFetch', turn: 1, input: { url: 'https://warehouse-theme-metal.myshopify.com/collections/all' } }],
+            }))).toBe(false);
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebSearch', turn: 1, input: { query: 'shopify product listing CSS selectors' } }],
+            }))).toBe(false);
+            // No WebFetch / WebSearch tool calls → no fire
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'Bash', turn: 1, input: { command: 'ls' } }],
+            }))).toBe(false);
+            // Backward-compat fallback: empty toolCallDetails → don't fire arbitrarily
+            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebFetch'], toolCallDetails: [] }))).toBe(false);
         });
 
         // B1 lock-in: absolute-path apify regex
@@ -233,18 +260,13 @@ describe('runInitPreset', () => {
             expect(cliReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/local/bin/apify deploy --token X'] }))).toBe(true);
         });
 
-        // B1 lock-in: absolute-path curl regex
-        it('REJECT_REST_VIA_SHELL catches absolute-path /usr/bin/curl', () => {
+        // B1 lock-in: host-aware shell predicate also catches absolute-path curl to api.apify.com
+        it('REJECT_REST_VIA_SHELL catches absolute-path /usr/bin/curl to api.apify.com', () => {
             const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
             const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://example.com'] }))).toBe(true);
-        });
-
-        // B1 lock-in: relative-path curl regex
-        it('REJECT_REST_VIA_SHELL catches ./bin/curl with relative path', () => {
-            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
-            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://example.com'] }))).toBe(true);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://api.apify.com/v2'] }))).toBe(true);
+            // /usr/bin/curl to a non-Apify host is allowed (EF4 fix)
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://example.com'] }))).toBe(false);
         });
 
         // B2 lock-in: shim is OUTSIDE workDir so the agent can't rm -rf to disarm
@@ -254,32 +276,17 @@ describe('runInitPreset', () => {
             expect(result.pathPrefix!.startsWith(workDir)).toBe(false);
         });
 
-        // B3 lock-in: alternate JS runtime (bun)
-        it('REJECT_REST_VIA_SHELL catches bun run /tmp/x.ts with fetch( in command', () => {
+        // EF4 lock-in: host-aware shim wraps the real binary, not a blanket block.
+        it('host-aware curl shim contains pass-through to real binary (NOT a blanket exit 127)', () => {
             const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
-            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['bun run /tmp/x.ts && fetch(url)'] }))).toBe(true);
+            const curlShim = readFileSync(join(result.pathPrefix!, 'curl'), 'utf8');
+            // Must reference all three Apify-platform hosts (so they're blocked).
+            expect(curlShim).toMatch(/api\.apify\.com/);
+            expect(curlShim).toMatch(/console\.apify\.com/);
+            expect(curlShim).toMatch(/mcp\.apify\.com/);
+            // Must exec the real binary for non-Apify hosts (not blanket exit).
+            expect(curlShim).toMatch(/exec "\$REAL"/);
         });
-
-        // B3 lock-in: alternate JS runtime (deno) with http.
-        it('REJECT_REST_VIA_SHELL catches deno run --allow-net /tmp/x.ts with http.', () => {
-            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
-            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['deno run --allow-net /tmp/x.ts http.request'] }))).toBe(true);
-        });
-
-        // B3 lock-in: versioned python with requests.
-        it('REJECT_REST_VIA_SHELL catches python3.11 -c with requests.get', () => {
-            const result = runInitPreset({ preset: 'mcp_only', mcpConfigJson: { mcpServers: {} }, workDir });
-            const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['python3.11 -c "import requests; requests.get(url)"'] }))).toBe(true);
-        });
-
-        // B3 KNOWN GAP: file-execution where HTTP library is inside the script file
-        // (not the bash command) evades regex-based detection. The complete solution
-        // is an egress firewall — documented inline in init-presets.ts.
-        // (Skipped: serves as documentation; vitest's it.skip leaves a clear marker.)
-        it.skip('KNOWN GAP: file-execution without inline HTTP substring evades regex — needs content scan or egress firewall', () => {});
 
         // Mixed-trajectory: guards against a future .some() -> .every() regression.
         it('reject still fires when forbidden command is interleaved with allowed ones', () => {
@@ -330,11 +337,13 @@ describe('runInitPreset', () => {
             expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['/usr/bin/curl https://api.apify.com/v2/users/me'] }))).toBe(true);
         });
 
-        // B1 lock-in: relative-path curl under cli_only
-        it('REJECT_REST_VIA_SHELL catches ./bin/curl with relative path', () => {
+        // B1 lock-in: relative-path curl under cli_only is HOST-AWARE
+        it('REJECT_REST_VIA_SHELL catches ./bin/curl to api.apify.com (but NOT to non-Apify host)', () => {
             const result = runInitPreset({ preset: 'cli_only', workDir });
             const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
-            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://example.com'] }))).toBe(true);
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://api.apify.com/v2'] }))).toBe(true);
+            // EF4 fix — curl to a non-Apify host is allowed
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['./bin/curl https://example.com'] }))).toBe(false);
         });
 
         // B2 lock-in: shim is OUTSIDE workDir under cli_only
@@ -344,14 +353,32 @@ describe('runInitPreset', () => {
             expect(result.pathPrefix!.startsWith(workDir)).toBe(false);
         });
 
-        // Previously-uncovered reject predicates: both REST-via-shell and REST-via-builtin
-        // are registered under cli_only but lacked direct trajectory coverage.
-        it('cli_only trajectory rejects detect REST via curl and WebFetch', () => {
+        // EF4 lock-in: host-aware shim wraps the real binary for non-Apify hosts.
+        it('cli_only host-aware curl shim contains pass-through to real binary', () => {
+            const result = runInitPreset({ preset: 'cli_only', workDir });
+            const curlShim = readFileSync(join(result.pathPrefix!, 'curl'), 'utf8');
+            expect(curlShim).toMatch(/api\.apify\.com/);
+            expect(curlShim).toMatch(/console\.apify\.com/);
+            expect(curlShim).toMatch(/mcp\.apify\.com/);
+            expect(curlShim).toMatch(/exec "\$REAL"/);
+        });
+
+        // Both REST-via-shell and REST-via-builtin are registered under cli_only
+        // — confirm both have the new host-aware predicates.
+        it('cli_only trajectory rejects detect REST via curl + WebFetch — host-aware', () => {
             const result = runInitPreset({ preset: 'cli_only', workDir });
             const restReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-shell');
             const builtinReject = result.trajectoryRejects.find((r) => r.name === 'no-rest-surface-via-builtin-tools');
+            // Apify-platform hits — both fire
             expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl https://api.apify.com'] }))).toBe(true);
-            expect(builtinReject!.predicate(makeTrajectory({ uniqueToolsUsed: ['WebFetch'] }))).toBe(true);
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebFetch', turn: 1, input: { url: 'https://api.apify.com/v2/acts' } }],
+            }))).toBe(true);
+            // Non-Apify hits — neither fires (EF4 fix)
+            expect(restReject!.predicate(makeTrajectory({ commandsExecuted: ['curl https://example.com'] }))).toBe(false);
+            expect(builtinReject!.predicate(makeTrajectory({
+                toolCallDetails: [{ tool: 'WebFetch', turn: 1, input: { url: 'https://warehouse-theme-metal.myshopify.com/foo' } }],
+            }))).toBe(false);
         });
     });
 
