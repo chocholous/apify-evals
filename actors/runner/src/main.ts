@@ -573,4 +573,14 @@ if (otelTrace && typeof otelTrace === 'object') {
     log.info(`OTel trace saved (${otelTrace.resourceSpans[0]?.scopeSpans[0]?.spans.length ?? 0} spans)`);
 }
 
+// Platform-level run status reflects per-test verdicts: SUCCEEDED only when
+// every test passed or warned; FAILED when any test failed or was unclear.
+// Previously Actor.exit() always reported SUCCEEDED, hiding per-test failures
+// behind a green status at the sweep-aggregator level.
+const nonOk = allResults.filter((r) => r.overallVerdict !== 'pass' && r.overallVerdict !== 'warning');
+if (nonOk.length > 0) {
+    const summary = `${failed} failed, ${unclear} unclear out of ${allResults.length} test(s)`;
+    await Actor.fail(summary);
+}
+
 await Actor.exit();
