@@ -249,11 +249,13 @@ const REJECT_REST_VIA_INAGENT_TOOLS: TrajectoryReject = {
     severity: 'fail',
     // Host-aware: inspects toolCallDetails for WebFetch/WebSearch invocations
     // whose URL (or, for WebSearch, query) mentions an Apify-platform host.
-    // Falls back to uniqueToolsUsed for backward compat in case toolCallDetails
-    // is empty (older trajectory emitters).
-    //
     // Case-insensitive tool match: claude-code emits `WebFetch`/`WebSearch`,
-    // opencode emits lowercase. The agent-agnostic guarantee requires both.
+    // opencode emits lowercase. All three agent parsers (claude, codex,
+    // opencode) populate toolCallDetails now — see run.ts:225 / :339 / :455.
+    //
+    // If toolCallDetails is unexpectedly empty (e.g. a future agent parser
+    // that hasn't wired it in yet, or a corrupted trajectory), the fallback
+    // below abstains rather than fail arbitrarily.
     predicate: (t) => {
         // Primary path: have detailed tool calls — inspect URLs.
         if (t.toolCallDetails && t.toolCallDetails.length > 0) {
