@@ -129,14 +129,26 @@ export async function fetchRunnerStartedAt(args: {
 }
 
 /**
+ * Build the canonical JSON payload for the runner-started anchor. Shared by
+ * the on-disk file writer (below) and the KVS mirror in main.ts so the two
+ * cannot drift on the `source` string (which triage tooling greps for).
+ */
+export function buildRunnerStartedPayload(apifyRunStartedAt: string): {
+    apifyRunStartedAt: string;
+    source: string;
+} {
+    return {
+        apifyRunStartedAt,
+        source: 'data.startedAt from GET /v2/actor-runs/<runner-run-id>',
+    };
+}
+
+/**
  * Write the runner-started timestamp anchor file into `metaDir`. The file's
  * shape is JSON so future fields can be added without breaking format.
  */
 export function writeRunnerStartedFile(metaDir: string, apifyRunStartedAt: string): string {
     const path = runnerStartedPath(metaDir);
-    writeFileSync(path, JSON.stringify({
-        apifyRunStartedAt,
-        source: 'data.startedAt from GET /v2/actor-runs/<runner-run-id>',
-    }, null, 2));
+    writeFileSync(path, JSON.stringify(buildRunnerStartedPayload(apifyRunStartedAt), null, 2));
     return path;
 }
