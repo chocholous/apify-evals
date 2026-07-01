@@ -96,9 +96,9 @@
             "prefill": {
                 "mcpServers": {
                     "apify": {
-                        "command": "npx",
-                        "args": ["-y", "@apify/mcp-server"],
-                        "env": { "APIFY_TOKEN": "${APIFY_TOKEN}" }
+                        "type": "http",
+                        "url": "https://mcp.apify.com",
+                        "headers": { "Authorization": "Bearer ${APIFY_TOKEN}" }
                     }
                 }
             }

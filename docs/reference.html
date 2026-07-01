@@ -729,9 +729,9 @@ jq: [.[] | select(.type=="assistant") | .message.content[]?
 <pre><code>{
   <span class="prop">"mcpServers"</span>: {
     <span class="prop">"apify"</span>: {
-      <span class="prop">"command"</span>: <span class="str">"npx"</span>,
-      <span class="prop">"args"</span>: [<span class="str">"-y"</span>, <span class="str">"@apify/mcp-server"</span>],
-      <span class="prop">"env"</span>: { <span class="prop">"APIFY_TOKEN"</span>: <span class="str">"${APIFY_TOKEN}"</span> }
+      <span class="prop">"type"</span>: <span class="str">"http"</span>,
+      <span class="prop">"url"</span>: <span class="str">"https://mcp.apify.com"</span>,
+      <span class="prop">"headers"</span>: { <span class="prop">"Authorization"</span>: <span class="str">"Bearer ${APIFY_TOKEN}"</span> }
     },
     <span class="prop">"github"</span>: {
       <span class="prop">"command"</span>: <span class="str">"npx"</span>,
