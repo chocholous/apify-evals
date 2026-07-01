@@ -180,8 +180,12 @@ done
 
 # Find the real ${tool} binary by stripping the shim dir from PATH first;
 # otherwise \`command -v ${tool}\` would resolve back to this wrapper.
+# Uses tr+grep+paste (POSIX) so an empty entry cannot slip in — the earlier
+# awk pipeline emitted a leading ':' when SHIM_DIR was first on PATH, and a
+# leading ':' means bash searches '.' first (an agent could plant ./curl
+# to bypass the shim).
 ORIG_PATH="$PATH"
-PATH=$(echo "$ORIG_PATH" | awk -v RS=: -v shim="$SHIM_DIR" 'NR > 1 { printf ":" } $0 != shim { printf "%s", $0 }')
+PATH=$(printf '%s' "$ORIG_PATH" | tr ':' '\n' | grep -vxF "$SHIM_DIR" | paste -sd: -)
 REAL=$(command -v ${tool} 2>/dev/null)
 PATH="$ORIG_PATH"
 
