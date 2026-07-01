@@ -133,7 +133,7 @@ Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge`/`warn-Judge` (case-insen
 - Má přístup k env vars a working directory (vidí soubory co agent vytvořil)
 
 ### Workspace konvence
-- Working directory pro agenta i script checkpointy: `/tmp/eval-workspace-<uuid8>/` (`main.ts:188`). Workspace obsahuje POUZE to, co tam zapíše agent + případně stažené Apify datasety (`eval-datasets/<id>.json`).
+- Working directory pro agenta i script checkpointy: `/tmp/eval-workspace-<uuid8>/` (created in `main.ts`; grep for `eval-workspace-`). Workspace obsahuje POUZE to, co tam zapíše agent + případně stažené Apify datasety (`eval-datasets/<id>.json`).
 - Runner ukládá své interní bookkeeping soubory (`trajectory.json`, `checkpoint.json`, `check-results.json`) do SIBLING dir `/tmp/eval-meta-<uuid8>/` — NIKDY do workspace. Důvody: (a) `apify push` bundluje jen obsah workspace, takže runner soubory nemohou leakovat do deployed Actoru; (b) workspace zůstává čistý pro měření (např. zda agent sám vytvořil `.actorignore`) — žádné framework artefakty se nemísí s agentovými.
 - Checkpoint subprocessy (script + jq checks) dostanou cestu k meta dir přes `$EVAL_META_DIR` env var, kterou runner injektuje **jen do checkpoint subprocessu**, ne do agentova. Agent meta dir nevidí ani v env ani ve workspace — runner je pro něj neviditelný.
 - Každý retry dostane fresh workspace + fresh meta dir (oba sdílí UUID).
