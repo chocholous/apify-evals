@@ -20,6 +20,7 @@ export {
     runnerStartedPath,
     fetchRunnerStartedAt,
     writeRunnerStartedFile,
+    buildRunnerStartedPayload,
 } from './runner-files.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';

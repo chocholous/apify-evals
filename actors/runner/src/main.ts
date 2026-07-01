@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, allocateMetaDir, trajectoryPath, fetchRunnerStartedAt, writeRunnerStartedFile } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, allocateMetaDir, trajectoryPath, fetchRunnerStartedAt, writeRunnerStartedFile, buildRunnerStartedPayload } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
 
 /**
@@ -206,7 +206,9 @@ log.info(`Meta dir:  ${workspaceMetaDir}`);
 //
 // Non-fatal on failure — scenarios that depend on the anchor will see the
 // file missing and can choose how to degrade.
-const actorRunId = process.env.APIFY_ACTOR_RUN_ID ?? '';
+// Prefer the canonical ACTOR_RUN_ID (documented in shared/src/agents/apify-env.ts:28);
+// fall back to the legacy APIFY_ACTOR_RUN_ID alias so older platform builds still work.
+const actorRunId = process.env.ACTOR_RUN_ID ?? process.env.APIFY_ACTOR_RUN_ID ?? '';
 let runnerStartedAt: string | undefined;
 if (apifyToken && actorRunId) {
     const r = await fetchRunnerStartedAt({ actorRunId, apifyToken });
@@ -217,17 +219,15 @@ if (apifyToken && actorRunId) {
         writeRunnerStartedFile(workspaceMetaDir, runnerStartedAt);
         // Also mirror to KVS so external tooling (e.g. the local
         // /run-eval-scenario skill) can read the anchor without entering
-        // the runner container.
-        await Actor.setValue('RUNNER-STARTED-AT', {
-            apifyRunStartedAt: runnerStartedAt,
-            source: 'data.startedAt from GET /v2/actor-runs/<runner-run-id>',
-        }, { contentType: 'application/json' });
+        // the runner container. Reuse buildRunnerStartedPayload so the
+        // KVS payload and the on-disk file cannot drift on the `source` string.
+        await Actor.setValue('RUNNER-STARTED-AT', buildRunnerStartedPayload(runnerStartedAt), { contentType: 'application/json' });
         log.info(`[runner-started] ${runnerStartedAt} (single-clock anchor for checkpoint scripts)`);
     }
 } else if (!apifyToken) {
     log.warning('No APIFY_TOKEN — skipping runner-startedAt anchor. Scenarios depending on it will degrade.');
 } else {
-    log.warning('No APIFY_ACTOR_RUN_ID env var (local dev?) — skipping runner-startedAt anchor.');
+    log.warning('No ACTOR_RUN_ID / APIFY_ACTOR_RUN_ID env var (local dev?) — skipping runner-startedAt anchor.');
 }
 
 const initResult = runInitPreset({
