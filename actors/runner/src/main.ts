@@ -141,7 +141,10 @@ const maxTurns = input.maxTurns ?? 10;
 // so meta.abortOnFailure is always a concrete boolean. Use `??` (not `||`) so an explicit
 // `false` from input still overrides `true` from the YAML.
 const abortOnFailure = input.abortOnFailure ?? meta.abortOnFailure;
-const abortOnFailureSource = input.abortOnFailure !== undefined ? 'input' : 'scenario';
+// Treat null and undefined the same for source labeling — a caller that
+// sends `{"abortOnFailure": null}` explicitly meant "defer to scenario",
+// same as omitting the field. `!= null` matches both `null` and `undefined`.
+const abortOnFailureSource = input.abortOnFailure != null ? 'input' : 'scenario';
 
 const preset = (input.initPreset ?? 'none') as PresetName;
 
@@ -155,7 +158,7 @@ const scenarioSpan = startScenarioSpan(tracer, {
 });
 
 log.info(`Scenario "${meta.name}": ${tests.length} test(s), abortOnFailure=${abortOnFailure} (source: ${abortOnFailureSource})`);
-if (input.abortOnFailure !== undefined && input.abortOnFailure !== meta.abortOnFailure) {
+if (input.abortOnFailure != null && input.abortOnFailure !== meta.abortOnFailure) {
     log.info(`Override: input.abortOnFailure=${input.abortOnFailure} takes precedence over scenario YAML value=${meta.abortOnFailure}`);
 }
 if (parseWarnings) {
