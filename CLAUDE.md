@@ -377,8 +377,8 @@ DŮLEŽITÉ: `--max-budget-usd` je **soft limit**. Claude CLI kontroluje budget 
 
 ## Monorepo deploy
 
-Jeden fat `Dockerfile` v rootu instaluje všechny agent CLI (Claude, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input `agent`.
-`actor.json` má `dockerContextDir: "../../.."`, což umožňuje Dockerfile přistupovat k `shared/`.
+Jeden fat `Dockerfile` v `actors/runner/` instaluje všechny agent CLI (Claude, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input `agent`.
+`actor.json` má `dockerContextDir: "../../.."`, což umožňuje Dockerfile přistupovat k `shared/` v rootu monorepa.
 
 Deploy z monorepo rootu (ne z `actors/runner` — `dockerContextDir` by ukazoval mimo upload):
 ```bash

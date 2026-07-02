@@ -27,7 +27,7 @@ fi
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 
 echo "=== Building production Docker image ==="
-$DOCKER build --network host -t "$IMAGE_NAME" -f "$PROJECT_DIR/Dockerfile" "$PROJECT_DIR" 2>&1 | tail -10
+$DOCKER build --network host -t "$IMAGE_NAME" -f "$PROJECT_DIR/actors/runner/Dockerfile" "$PROJECT_DIR" 2>&1 | tail -10
 
 echo ""
 echo "=== Running tests inside production image ==="
