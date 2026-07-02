@@ -316,6 +316,7 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
     let error: string | null = null;
     let stopReason = 'end_turn';
     const toolCalls: string[] = [];
+    const toolCallDetails: Array<{ tool: string; turn: number; input: Record<string, unknown> }> = [];
     const commands: string[] = [];
     const files = { created: [] as string[], modified: [] as string[] };
     const mcpTools: string[] = [];
@@ -337,6 +338,11 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
             if (event.item.type === 'command_execution') {
                 toolCalls.push('command_execution');
                 currentTurnTools.push('command_execution');
+                toolCallDetails.push({
+                    tool: 'command_execution',
+                    turn: turnNum,
+                    input: event.item.command ? { command: event.item.command } : {},
+                });
                 if (event.item.command) {
                     commands.push(event.item.command);
                     const bashFileOps = extractFileOpsFromCommand(event.item.command);
@@ -347,6 +353,11 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
             if (event.item.type === 'file_change' && event.item.changes) {
                 toolCalls.push('file_change');
                 currentTurnTools.push('file_change');
+                toolCallDetails.push({
+                    tool: 'file_change',
+                    turn: turnNum,
+                    input: { changes: event.item.changes as unknown as Record<string, unknown> },
+                });
                 for (const change of event.item.changes) {
                     if (change.kind === 'add') files.created.push(change.path);
                     else files.modified.push(change.path);
@@ -357,6 +368,11 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
                 toolCalls.push(toolName);
                 currentTurnTools.push(toolName);
                 mcpTools.push(toolName);
+                toolCallDetails.push({
+                    tool: toolName,
+                    turn: turnNum,
+                    input: (event.item as unknown as { input?: Record<string, unknown> }).input ?? {},
+                });
             }
         }
 
@@ -400,7 +416,7 @@ export function parseCodexStream(events: AgentEvent[]): ParsedStream {
         getError: () => error,
         getStopReason: () => stopReason,
         getTrajectoryData: () => ({
-            toolCalls, toolCallDetails: [], perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
+            toolCalls, toolCallDetails, perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
             files, commands, mcpTools,
         }),
     };
@@ -416,6 +432,7 @@ export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
     let error: string | null = null;
     let stopReason = 'end_turn';
     const toolCalls: string[] = [];
+    const toolCallDetails: Array<{ tool: string; turn: number; input: Record<string, unknown> }> = [];
     const commands: string[] = [];
     const files = { created: [] as string[], modified: [] as string[] };
     const mcpTools: string[] = [];
@@ -439,8 +456,14 @@ export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
             toolCalls.push(toolName);
             currentTurnTools.push(toolName);
 
+            // Populate toolCallDetails uniformly so the runner's host-aware
+            // trajectory predicates (e.g. no-rest-surface-via-builtin-tools)
+            // can inspect .input.url for webfetch/websearch calls the same
+            // way they do for claude-code (parseClaudeStream at :225).
+            const input = (event.part.state?.input as Record<string, unknown> | undefined) ?? {};
+            toolCallDetails.push({ tool: toolName, turn: turnNum, input });
+
             if (toolName === 'edit' || toolName === 'write') {
-                const input = event.part.state?.input as Record<string, unknown> | undefined;
                 const path = input?.file_path as string | undefined ?? input?.path as string | undefined;
                 if (path) {
                     if (toolName === 'write') files.created.push(path);
@@ -448,7 +471,6 @@ export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
                 }
             }
             if (toolName === 'bash' || toolName === 'command') {
-                const input = event.part.state?.input as Record<string, unknown> | undefined;
                 const cmd = input?.command as string | undefined;
                 if (cmd) commands.push(cmd);
             }
@@ -500,7 +522,7 @@ export function parseOpenCodeStream(events: AgentEvent[]): ParsedStream {
         getError: () => error,
         getStopReason: () => stopReason,
         getTrajectoryData: () => ({
-            toolCalls, toolCallDetails: [], perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
+            toolCalls, toolCallDetails, perTurnTokens, perTurnToolCalls, errorRecoveries: 0,
             files, commands, mcpTools,
         }),
     };
