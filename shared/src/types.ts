@@ -1,7 +1,6 @@
 export interface ScenarioMeta {
     name: string;
     description: string;
-    abortOnFailure: boolean;
 }
 
 /**

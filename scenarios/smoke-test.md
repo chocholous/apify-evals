@@ -1,7 +1,6 @@
 ---
 name: smoke-test
 description: Basic smoke test — simple question with checkpoint validation
-abortOnFailure: true
 ---
 
 ## Test

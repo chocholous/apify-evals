@@ -270,26 +270,6 @@ const tests: TestDef[] = [
         },
     },
     {
-        name: 'us5-abort-on-failure',
-        scenarioFile: 'us5-abort-on-failure.md',
-        input: {
-            scenario: readScenario('us5-abort-on-failure.md'),
-            maxTurns: 5,
-            maxBudgetUsd: 0.50,
-        },
-        checks: (results) => {
-            if (results.length !== 1) return {
-                pass: false,
-                details: `Expected 1 result (step 2 should NOT run), got ${results.length}`,
-            };
-            const v = (results[0] as any).overallVerdict;
-            return {
-                pass: v === 'fail',
-                details: `Step 1 failed (${v}), step 2 was correctly skipped (only 1 result in dataset)`,
-            };
-        },
-    },
-    {
         name: 'us5-dependent-steps',
         scenarioFile: 'us5-dependent-steps.md',
         input: {

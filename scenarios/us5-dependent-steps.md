@@ -1,7 +1,6 @@
 ---
 name: us5-dependent-steps
 description: "US5 deep: Steps that depend on each other"
-abortOnFailure: true
 ---
 
 ## Test

@@ -23,7 +23,6 @@ Return tool call count.
 
         expect(result.meta.name).toBe('simple');
         expect(result.meta.description).toBe('A simple test');
-        expect(result.meta.abortOnFailure).toBe(false);
         expect(result.tests).toHaveLength(1);
         expect(result.tests[0].test).toBe('What is 2+2?');
         expect(result.tests[0].checkpoint).toBe('The answer is 4.');
@@ -68,7 +67,6 @@ Return final JSON.
         const result = parseScenario(md);
 
         expect(result.meta.name).toBe('multi-step');
-        expect(result.meta.abortOnFailure).toBe(true);
         expect(result.tests).toHaveLength(3);
 
         expect(result.tests[0].monitor).toBe('Return JSON.');
@@ -90,7 +88,6 @@ It was done.
         const result = parseScenario(md);
 
         expect(result.meta.description).toBe('');
-        expect(result.meta.abortOnFailure).toBe(false);
         expect(result.tests).toHaveLength(1);
         expect(result.tests[0].monitor).toBeNull();
     });

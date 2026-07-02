@@ -1,7 +1,6 @@
 ---
 name: ai-nondeterministic
 description: "Non-deterministic AI test: tasks where agent can take different paths"
-abortOnFailure: false
 ---
 
 ## Test

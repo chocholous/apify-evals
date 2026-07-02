@@ -1,7 +1,6 @@
 ---
 name: us1-partial-answer
 description: "US1 deep: Agent gives partially correct answer — judge must detect"
-abortOnFailure: false
 ---
 
 ## Test

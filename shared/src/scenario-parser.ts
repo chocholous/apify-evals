@@ -16,10 +16,12 @@ export function parseScenario(markdown: string): ParsedScenario {
 
     const { data, content } = matter(markdown);
 
+    // Note: `abortOnFailure:` in the YAML frontmatter is accepted for
+    // backward compatibility but silently discarded — the runner input is the
+    // single source of truth (see actors/runner/src/main.ts).
     const meta: ScenarioMeta = {
         name: data.name ?? 'unnamed',
         description: data.description ?? '',
-        abortOnFailure: data.abortOnFailure ?? false,
     };
 
     if (!meta.name || meta.name === 'unnamed') {

@@ -1,7 +1,6 @@
 ---
 name: us7-budget-abort
 description: "US7: Verify budget abort with very low limit"
-abortOnFailure: false
 ---
 
 ## Test

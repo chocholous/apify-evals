@@ -1,7 +1,6 @@
 ---
 name: us7-actual-abort
 description: "US7 deep: Budget so low that run MUST be aborted mid-execution"
-abortOnFailure: false
 ---
 
 ## Test

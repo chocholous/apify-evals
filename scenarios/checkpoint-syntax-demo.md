@@ -1,7 +1,6 @@
 ---
 name: checkpoint-syntax-demo
 description: Demonstrates every checkpoint syntax variant — use as a reference
-abortOnFailure: false
 ---
 
 ## Test

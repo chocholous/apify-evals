@@ -1,7 +1,6 @@
 ---
 name: trajectory-test
 description: Tests tool usage trajectory capture - agent must use multiple tools
-abortOnFailure: true
 ---
 
 ## Test

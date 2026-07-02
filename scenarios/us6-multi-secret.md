@@ -1,7 +1,6 @@
 ---
 name: us6-multi-secret
 description: "US6 deep: Multiple secrets, tool call args, error messages"
-abortOnFailure: false
 ---
 
 ## Test

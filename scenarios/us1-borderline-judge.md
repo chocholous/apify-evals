@@ -1,7 +1,6 @@
 ---
 name: us1-borderline-judge
 description: "US1 deep: Borderline checkpoints that test judge accuracy"
-abortOnFailure: false
 ---
 
 ## Test
