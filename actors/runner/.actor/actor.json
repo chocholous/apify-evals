@@ -16,8 +16,8 @@
     },
     "dockerfile": "./Dockerfile",
     "dockerContextDir": "../../..",
-    "defaultMemoryMbytes": 4096,
+    "defaultMemoryMbytes": 8192,
     "minMemoryMbytes": 2048,
-    "maxMemoryMbytes": 8192,
+    "maxMemoryMbytes": 16384,
     "usesStandbyMode": false
 }
