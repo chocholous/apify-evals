@@ -6,104 +6,21 @@
             "title": "Eval Results",
             "transformation": {
                 "fields": [
-                    "scenarioName",
                     "testIndex",
-                    "agent",
-                    "model",
                     "overallVerdict",
-                    "stopReason",
-                    "metrics.totalCostUsd",
-                    "metrics.durationMs",
-                    "metrics.numTurns",
-                    "trajectory.toolCallCount",
-                    "efficiency.cacheHitRate",
-                    "retryAttempts",
-                    "error"
+                    "testPrompt",
+                    "agentOutput",
+                    "verdicts"
                 ]
             },
             "display": {
                 "component": "table",
                 "properties": {
-                    "scenarioName": {
-                        "label": "Scenario",
-                        "format": "text"
-                    },
-                    "testIndex": {
-                        "label": "#",
-                        "format": "number"
-                    },
-                    "agent": {
-                        "label": "Agent",
-                        "format": "text"
-                    },
-                    "model": {
-                        "label": "Model",
-                        "format": "text"
-                    },
-                    "overallVerdict": {
-                        "label": "Verdict",
-                        "format": "text"
-                    },
-                    "stopReason": {
-                        "label": "Stop",
-                        "format": "text"
-                    },
-                    "metrics.totalCostUsd": {
-                        "label": "Cost ($)",
-                        "format": "number"
-                    },
-                    "metrics.durationMs": {
-                        "label": "Duration (ms)",
-                        "format": "number"
-                    },
-                    "metrics.numTurns": {
-                        "label": "Turns",
-                        "format": "number"
-                    },
-                    "trajectory.toolCallCount": {
-                        "label": "Tool Calls",
-                        "format": "number"
-                    },
-                    "efficiency.cacheHitRate": {
-                        "label": "Cache Hit",
-                        "format": "number"
-                    },
-                    "retryAttempts": {
-                        "label": "Retries",
-                        "format": "number"
-                    },
-                    "error": {
-                        "label": "Error",
-                        "format": "text"
-                    }
-                }
-            }
-        },
-        "verdicts": {
-            "title": "Checkpoint Verdicts",
-            "transformation": {
-                "fields": [
-                    "scenarioName",
-                    "testIndex",
-                    "verdicts"
-                ],
-                "unwind": ["verdicts"]
-            },
-            "display": {
-                "component": "table",
-                "properties": {
-                    "scenarioName": {
-                        "label": "Scenario",
-                        "format": "text"
-                    },
-                    "testIndex": {
-                        "label": "#",
-                        "format": "number"
-                    },
-                    "verdicts": {
-                        "label": "Verdicts",
-                        "format": "object"
-                    }
+                    "testIndex":      { "label": "Test #",       "format": "number" },
+                    "overallVerdict": { "label": "Verdict",      "format": "text"   },
+                    "testPrompt":     { "label": "Prompt",       "format": "text"   },
+                    "agentOutput":    { "label": "Agent Output", "format": "text"   },
+                    "verdicts":       { "label": "Checks",       "format": "array"  }
                 }
             }
         }
