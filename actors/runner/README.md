@@ -214,20 +214,34 @@ The combination handles every realistic leak path:
 
 ### MCP Config JSON example
 
-When using "MCP Native" or "mcpc" preset, provide the server configuration:
+When using "MCP Native" or "mcpc" preset, provide the server configuration. Apify's own [`apify/apify-mcp-server`](https://github.com/apify/apify-mcp-server) README recommends the **hosted** server at `https://mcp.apify.com` over the local stdio package, so lead with that:
+
+```json
+{
+    "mcpServers": {
+        "apify": {
+            "type": "http",
+            "url": "https://mcp.apify.com",
+            "headers": { "Authorization": "Bearer ${APIFY_TOKEN}" }
+        },
+        "github": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-github"],
+            "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+        }
+    }
+}
+```
+
+For offline or network-isolated runs, fall back to the stdio package `@apify/actors-mcp-server` (the canonical npm package; `@apify/mcp-server` does **not** exist):
 
 ```json
 {
     "mcpServers": {
         "apify": {
             "command": "npx",
-            "args": ["-y", "@apify/mcp-server"],
+            "args": ["-y", "@apify/actors-mcp-server"],
             "env": { "APIFY_TOKEN": "${APIFY_TOKEN}" }
-        },
-        "github": {
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-github"],
-            "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
         }
     }
 }
