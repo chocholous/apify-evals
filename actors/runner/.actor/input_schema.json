@@ -58,6 +58,13 @@
             "minimum": 1,
             "maximum": 100
         },
+        "abortOnFailure": {
+            "title": "Abort on test failure",
+            "type": "boolean",
+            "description": "If true, the eval run aborts on the first failing test in the scenario. If false, subsequent tests still run independently. When set explicitly, overrides the abortOnFailure flag in the scenario's YAML frontmatter; when left unset, the scenario YAML value is used (which itself defaults to false if absent from the frontmatter).",
+            "nullable": true,
+            "sectionCaption": "Behavior"
+        },
         "envVariables": {
             "title": "Environment Variables",
             "type": "object",

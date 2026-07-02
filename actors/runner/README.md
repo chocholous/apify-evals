@@ -54,7 +54,7 @@ The answer should name a real, currently existing repository.
 - Tests are separated by `---`
 - Each test needs `## Test` (the prompt) and `## Checkpoint` (evaluation criteria)
 - Optional: `## Monitor` — a follow-up question about the agent's work
-- YAML frontmatter: `name` (required), `description`, `abortOnFailure` (stop on first failure)
+- YAML frontmatter: `name` (required), `description`, `abortOnFailure` (stop on first failure). The top-level `abortOnFailure` input on the Actor overrides this when set explicitly — useful for flipping abort behaviour per-run without editing the scenario markdown.
 - **Retries (experimental):** `maxRetries` input re-runs a failed test. ⚠️ Retries create a fresh workspace but may produce inconsistent results due to agent caching, auth state, and non-determinism. Recommended: `maxRetries: 0` (default) — one run per actor call
 
 ## Checkpoint syntax
@@ -368,7 +368,7 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 
 - Start with simple `contains:` checks to verify basic functionality, then add LLM judge for quality
 - Use `maxTurns: 3` for simple questions, `maxTurns: 10+` for complex multi-step tasks
-- Set `abortOnFailure: true` when tests build on each other (test 2 depends on test 1)
+- Set `abortOnFailure: true` when tests build on each other (test 2 depends on test 1). Either in the scenario YAML frontmatter, or via the top-level `abortOnFailure` input — the input wins when both are set.
 - Use `script:` checkpoints to verify side effects (files created, API state changed)
 - The Custom Init Script can install tools, download validators, or set up test fixtures
 - If the agent runs an Apify Actor, its dataset is automatically downloaded into `eval-datasets/<datasetId>.json` in the workspace — your script checks and the LLM judge can read it directly
