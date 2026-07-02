@@ -12,11 +12,15 @@ export type { DatasetDownloadResult } from './apify-datasets.js';
 export {
     RUNNER_FILES,
     META_DIR_ENV_VAR,
-    metaDirFor,
+    allocateMetaDir,
     ensureMetaDir,
     trajectoryPath,
     checkpointPath,
     checkResultsPath,
+    runnerStartedPath,
+    fetchRunnerStartedAt,
+    writeRunnerStartedFile,
+    buildRunnerStartedPayload,
 } from './runner-files.js';
 
 export type { ParsedScenario, TestCase, ScenarioMeta, ExpectedToolCall } from './types.js';
