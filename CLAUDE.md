@@ -133,9 +133,10 @@ Subsekce: `Check`/`Checks`, `Script`/`Scripts`, `Judge`/`warn-Judge` (case-insen
 - Má přístup k env vars a working directory (vidí soubory co agent vytvořil)
 
 ### Workspace konvence
-- Working directory pro agenta i script checkpointy: `/tmp/eval-workspace-<uuid8>/` (`main.ts:61`)
-- Každý retry dostane fresh workspace (nový uuid)
-- Workspace obsahuje: soubory vytvořené agentem, `eval-datasets/<id>.json` (Apify datasety, viz LLM Judge sekce), `.eval-trajectory.json` (raw trajectory data), `eval-checkpoint.json` + `eval-check-results.json` (jen v judge fázi)
+- Working directory pro agenta i script checkpointy: `/tmp/eval-workspace-<uuid8>/` (created in `main.ts`; grep for `eval-workspace-`). Workspace obsahuje POUZE to, co tam zapíše agent + případně stažené Apify datasety (`eval-datasets/<id>.json`).
+- Runner ukládá své interní bookkeeping soubory (`trajectory.json`, `checkpoint.json`, `check-results.json`) do SIBLING dir `/tmp/eval-meta-<uuid8>/` — NIKDY do workspace. Důvody: (a) `apify push` bundluje jen obsah workspace, takže runner soubory nemohou leakovat do deployed Actoru; (b) workspace zůstává čistý pro měření (např. zda agent sám vytvořil `.actorignore`) — žádné framework artefakty se nemísí s agentovými.
+- Checkpoint subprocessy (script + jq checks) dostanou cestu k meta dir přes `$EVAL_META_DIR` env var, kterou runner injektuje **jen do checkpoint subprocessu**, ne do agentova. Agent meta dir nevidí ani v env ani ve workspace — runner je pro něj neviditelný.
+- Každý retry dostane fresh workspace + fresh meta dir (oba sdílí UUID).
 - Scénáře typu `security-isolation.md` testují, že agent nemůže psát mimo workspace (runner files vlastní root)
 
 ### jq checkpoint
@@ -314,9 +315,7 @@ Files:
 - file1
 - subdir/file2
 - eval-datasets/<datasetId>.json
-- .eval-trajectory.json
-- eval-checkpoint.json
-- eval-check-results.json
+(Runner bookkeeping — trajectory.json / checkpoint.json / check-results.json — žije v sibling /tmp/eval-meta-<uuid>/. Checkpoint scripty k němu přistupují přes $EVAL_META_DIR; agent ho nevidí.)
 
 ## Agent Conversation Log (tool calls)           ← jen pokud máme events
 \`\`\`

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import { Actor, log } from 'apify';
-import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall } from '@apify-evals/shared';
+import { parseScenario, runAgent, judgeAllChecks, maskSecrets, formatCost, formatDuration, runInitPreset, downloadApifyDatasets, initOtel, flushOtel, startScenarioSpan, startTestSpan, startAgentSpan, endAgentSpan, startJudgeSpan, endJudgeSpan, endTestSpan, endScenarioSpan, EMPTY_METRICS, EMPTY_EFFICIENCY, EMPTY_TRAJECTORY, computeOverall, metaDirFor, ensureMetaDir, trajectoryPath } from '@apify-evals/shared';
 import type { AgentResult, PresetName, AgentRunResult, JudgeResult, CheckVerdict, VerdictValue, TrajectoryReject } from '@apify-evals/shared';
 
 /**
@@ -197,10 +197,19 @@ if (input.preAuthenticate !== false && apifyToken) {
     }
 }
 
-// Create isolated workspace so agent cannot modify runner's own files
+// Create isolated workspace so the agent cannot modify the runner's own files.
+// Runner bookkeeping (trajectory dumps, judge checkpoint records) goes into a
+// SIBLING `metaDir` outside the workspace — so it never leaks into `apify push`
+// archives, and the agent's workspace stays pristine for measurement integrity
+// (we observe what the agent writes, with no framework artefacts mixed in).
+// Checkpoint scripts that need to read runner artefacts receive the path via
+// the `EVAL_META_DIR` env var, injected into checkpoint subprocesses only.
 const workspaceDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
 mkdirSync(workspaceDir, { recursive: true });
+const workspaceMetaDir = metaDirFor(workspaceDir);
+ensureMetaDir(workspaceMetaDir);
 log.info(`Workspace: ${workspaceDir}`);
+log.info(`Meta dir:  ${workspaceMetaDir}`);
 
 const initResult = runInitPreset({
     preset,
@@ -236,6 +245,7 @@ for (let i = 0; i < tests.length; i++) {
     let judgeMs = 0;
 
     let currentWorkDir = workspaceDir;
+    let currentMetaDir = workspaceMetaDir;
     let currentPluginDirs = [...pluginDirs];
     let currentMcpConfigPath = initResult.mcpConfigPath;
     let currentStrictMcp = initResult.strictMcpConfig;
@@ -246,7 +256,9 @@ for (let i = 0; i < tests.length; i++) {
         if (attempt > 0) {
             log.info(`  Retry ${attempt}/${maxRetries} — fresh workspace`);
             currentWorkDir = `/tmp/eval-workspace-${randomUUID().slice(0, 8)}`;
+            currentMetaDir = metaDirFor(currentWorkDir);
             mkdirSync(currentWorkDir, { recursive: true });
+            ensureMetaDir(currentMetaDir);
             const retryInit = runInitPreset({
                 preset,
                 customScript: input.initBashScript,
@@ -393,7 +405,9 @@ for (let i = 0; i < tests.length; i++) {
             }
         }
 
-        // Write trajectory to workspace so script checkpoints can verify agent behavior
+        // Persist the agent's trajectory to the runner's private metaDir
+        // (outside the agent's workspace). Checkpoint scripts that need
+        // trajectory data can find it at $EVAL_META_DIR/trajectory.json.
         try {
             const trajectoryData = {
                 toolCallSequence: result.trajectory.toolCallSequence,
@@ -403,7 +417,7 @@ for (let i = 0; i < tests.length; i++) {
                 toolCallCount: result.trajectory.toolCallCount,
                 uniqueToolsUsed: result.trajectory.uniqueToolsUsed,
             };
-            writeFileSync(join(currentWorkDir, '.eval-trajectory.json'), JSON.stringify(trajectoryData, null, 2));
+            writeFileSync(trajectoryPath(currentMetaDir), JSON.stringify(trajectoryData, null, 2));
         } catch { /* non-critical */ }
 
         // Download Apify datasets created during agent run so judge can verify data
@@ -449,7 +463,7 @@ for (let i = 0; i < tests.length; i++) {
         const judgeStart = Date.now();
         const judgeLines: string[] = [];
         judgeResult = await judgeAllChecks(result.text, test.checkpoint, {
-            env: secrets, workDir: currentWorkDir, judgeModel: input.judgeModel, events: result.events,
+            env: secrets, workDir: currentWorkDir, metaDir: currentMetaDir, judgeModel: input.judgeModel, events: result.events,
             onJudgeRawLine: (line) => {
                 judgeLines.push(line);
                 Actor.setValue('LIVE-JUDGE-LOG', judgeLines.join('\n'), { contentType: 'text/plain' }).catch(() => {});
