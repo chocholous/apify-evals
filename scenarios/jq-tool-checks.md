@@ -1,7 +1,6 @@
 ---
 name: jq-tool-checks-demo
 description: Demonstrates jq checkpoint type for validating agent tool usage and trajectory
-abortOnFailure: false
 ---
 
 ## Test

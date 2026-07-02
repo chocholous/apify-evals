@@ -1,7 +1,6 @@
 ---
 name: us6-env-vars
 description: "US6: Verify env var injection and masking"
-abortOnFailure: false
 ---
 
 ## Test

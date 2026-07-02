@@ -27,7 +27,6 @@ A scenario is a Markdown file with one or more tests. Each test has a prompt and
 ---
 name: my-test
 description: What this scenario tests
-abortOnFailure: false
 ---
 
 ## Test
@@ -54,7 +53,7 @@ The answer should name a real, currently existing repository.
 - Tests are separated by `---`
 - Each test needs `## Test` (the prompt) and `## Checkpoint` (evaluation criteria)
 - Optional: `## Monitor` — a follow-up question about the agent's work
-- YAML frontmatter: `name` (required), `description`, `abortOnFailure` (stop on first failure). The top-level `abortOnFailure` input on the Actor overrides this when set explicitly — useful for flipping abort behaviour per-run without editing the scenario markdown.
+- YAML frontmatter: `name` (required), `description`. Whether the scenario aborts on the first failing test is controlled by the top-level `abortOnFailure` input on the Actor (default `false`); any `abortOnFailure:` key in the scenario YAML is ignored (accepted for backward compatibility, but not read).
 - **Retries (experimental):** `maxRetries` input re-runs a failed test. ⚠️ Retries create a fresh workspace but may produce inconsistent results due to agent caching, auth state, and non-determinism. Recommended: `maxRetries: 0` (default) — one run per actor call
 
 ## Checkpoint syntax
@@ -368,7 +367,7 @@ Use `maxBudgetUsd` to cap spending. The budget is a soft limit — checked betwe
 
 - Start with simple `contains:` checks to verify basic functionality, then add LLM judge for quality
 - Use `maxTurns: 3` for simple questions, `maxTurns: 10+` for complex multi-step tasks
-- Set `abortOnFailure: true` when tests build on each other (test 2 depends on test 1). Either in the scenario YAML frontmatter, or via the top-level `abortOnFailure` input — the input wins when both are set.
+- Set `abortOnFailure: true` on the top-level runner input when tests build on each other (test 2 depends on test 1). This is input-only — any `abortOnFailure:` key in the scenario YAML frontmatter is ignored.
 - Use `script:` checkpoints to verify side effects (files created, API state changed)
 - The Custom Init Script can install tools, download validators, or set up test fixtures
 - If the agent runs an Apify Actor, its dataset is automatically downloaded into `eval-datasets/<datasetId>.json` in the workspace — your script checks and the LLM judge can read it directly

@@ -1,7 +1,6 @@
 ---
 name: security-isolation
 description: Verify agent cannot modify runner files and works only in workspace
-abortOnFailure: false
 ---
 
 ## Test

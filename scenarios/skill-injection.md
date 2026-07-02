@@ -1,7 +1,6 @@
 ---
 name: skill-injection-test
 description: Test that init script can inject CLAUDE.md rules into workspace and agent follows them
-abortOnFailure: true
 ---
 
 ## Test

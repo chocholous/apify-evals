@@ -119,7 +119,6 @@
 - `us1-agent-fails`: judge správně detekuje selhání agenta (neexistující soubor) — PASS
 - `us1-partial-answer`: nuanced eval (5 zemí + math 17×23) — PASS
 - `us1-borderline-judge`: hraniční checkpointy (closure, tomato paradox) — PASS, confidence 0.98-0.99
-- `us5-abort-on-failure`: krok 1 fail → krok 2 přeskočen (1 result v datasetu) — PASS
 - `us5-dependent-steps`: 3-step řetěz (random → reverse → concat) — PASS
 - `us6-multi-secret`: 2 secrets maskované i v tool args + error messages — PASS
 - `us7-actual-abort`: budget $0.01 → error, run zastaveno — PASS

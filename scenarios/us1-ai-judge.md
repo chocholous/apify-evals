@@ -1,7 +1,6 @@
 ---
 name: us1-ai-judge
 description: "US1 AI test: LLM judge evaluates nuanced answer"
-abortOnFailure: false
 ---
 
 ## Test

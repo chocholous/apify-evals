@@ -51,7 +51,6 @@ Markdown s YAML frontmatter. Validace při startu (throwne `ScenarioParseError` 
 ---
 name: scenario-name (required)
 description: "Description"
-abortOnFailure: false
 ---
 
 ## Test
@@ -66,6 +65,8 @@ Plain text = LLM judge prompt
 ## Monitor
 (Optional) Follow-up question
 ```
+
+Abort semantics: nastav top-level runner input `abortOnFailure` — jakýkoli `abortOnFailure:` klíč uvnitř scénářového YAML frontmatter je tiše zahozen (input je jediný zdroj pravdy).
 
 Multi-test: bloky oddělené `---`.
 

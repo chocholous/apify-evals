@@ -1,7 +1,6 @@
 ---
 name: us1-agent-fails
 description: "US1 deep: Agent cannot fulfill the task — judge should detect failure"
-abortOnFailure: false
 ---
 
 ## Test

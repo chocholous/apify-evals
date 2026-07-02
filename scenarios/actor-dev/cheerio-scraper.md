@@ -1,7 +1,6 @@
 ---
 name: actor-dev-cheerio-scraper
 description: Agent creates a CheerioCrawler-based Apify Actor that scrapes product data
-abortOnFailure: true
 expectedTools:
   required: [Bash, Write]
   optional: [Read, Edit, Glob, Grep]

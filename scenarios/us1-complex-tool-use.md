@@ -1,7 +1,6 @@
 ---
 name: us1-complex-tool-use
 description: "US1 deep: Agent must use multiple tools to solve a task"
-abortOnFailure: false
 ---
 
 ## Test

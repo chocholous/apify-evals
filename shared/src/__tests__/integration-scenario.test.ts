@@ -89,7 +89,6 @@ describe('integration: trajectory-test scenario', () => {
 
     it('parses correctly', () => {
         expect(meta.name).toBe('trajectory-test');
-        expect(meta.abortOnFailure).toBe(true);
         expect(tests).toHaveLength(2);
     });
 

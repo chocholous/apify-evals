@@ -1,7 +1,6 @@
 ---
 name: multi-check-demo
 description: Demonstrates all checkpoint types in one scenario
-abortOnFailure: false
 ---
 
 ## Test

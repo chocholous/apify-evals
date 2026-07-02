@@ -24,7 +24,7 @@
             "type": "string",
             "description": "Markdown with YAML frontmatter + ## Test / ## Checkpoint sections separated by ---. Checkpoint supports: contains:, regex:, json-schema:, script: prefixes for deterministic checks, and plain text for LLM judge. Multiple checks in one checkpoint all must pass.",
             "editor": "textarea",
-            "prefill": "---\nname: example-eval\ndescription: Simple eval demonstrating checkpoint types\nabortOnFailure: false\n---\n\n## Test\nWhat is the largest planet in our solar system? Answer in one sentence.\n\n## Checkpoint\ncontains: Jupiter\nThe answer should be scientifically accurate.\n"
+            "prefill": "---\nname: example-eval\ndescription: Simple eval demonstrating checkpoint types\n---\n\n## Test\nWhat is the largest planet in our solar system? Answer in one sentence.\n\n## Checkpoint\ncontains: Jupiter\nThe answer should be scientifically accurate.\n"
         },
         "systemPrompt": {
             "title": "System Prompt",

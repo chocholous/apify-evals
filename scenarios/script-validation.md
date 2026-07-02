@@ -1,7 +1,6 @@
 ---
 name: script-validation
 description: Tests script checkpoint with downloaded validator
-abortOnFailure: false
 ---
 
 ## Test

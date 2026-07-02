@@ -24,7 +24,7 @@
             "type": "string",
             "description": "Markdown with YAML frontmatter + ## Test / ## Checkpoint sections separated by ---. Checkpoint supports: contains:, regex:, json-schema:, script: prefixes for deterministic checks, and plain text for LLM judge. Multiple checks in one checkpoint all must pass.",
             "editor": "textarea",
-            "prefill": "---\nname: example-eval\ndescription: Simple eval demonstrating checkpoint types\nabortOnFailure: false\n---\n\n## Test\nWhat is the largest planet in our solar system? Answer in one sentence.\n\n## Checkpoint\ncontains: Jupiter\nThe answer should be scientifically accurate.\n"
+            "prefill": "---\nname: example-eval\ndescription: Simple eval demonstrating checkpoint types\n---\n\n## Test\nWhat is the largest planet in our solar system? Answer in one sentence.\n\n## Checkpoint\ncontains: Jupiter\nThe answer should be scientifically accurate.\n"
         },
         "systemPrompt": {
             "title": "System Prompt",
@@ -61,9 +61,9 @@
         "abortOnFailure": {
             "title": "Abort on test failure",
             "type": "boolean",
-            "description": "If true, the eval run aborts on the first failing test in the scenario. If false, subsequent tests still run independently. When set explicitly, overrides the abortOnFailure flag in the scenario's YAML frontmatter; when left unset, the scenario YAML value is used (which itself defaults to false if absent from the frontmatter).",
-            "nullable": true,
-            "sectionCaption": "Behavior"
+            "description": "If true, the eval run aborts on the first failing test in the scenario. If false, subsequent tests still run independently. This is the single source of truth — any `abortOnFailure:` key in the scenario's YAML frontmatter is ignored.",
+            "default": false,
+            "nullable": true
         },
         "envVariables": {
             "title": "Environment Variables",
@@ -77,8 +77,7 @@
             "title": "Pre-authenticate Apify CLI",
             "type": "boolean",
             "description": "If true (default), the runner populates ~/.apify/auth.json with APIFY_TOKEN via 'apify login --token' BEFORE the agent starts. This mirrors what every real Apify developer has after running 'apify login' once on their machine — 'apify push' from the agent will work without the agent having to discover auth flow. Set to false for raw-unauthed measurement (the agent has to figure out auth on its own — surfaces F11 in the eval pack's FINDINGS.md).",
-            "default": true,
-            "sectionCaption": "Authentication"
+            "default": true
         },
         "initPreset": {
             "title": "Tool Setup Preset",

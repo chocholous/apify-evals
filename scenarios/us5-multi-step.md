@@ -1,7 +1,6 @@
 ---
 name: us5-multi-step
-description: "US5: Multi-step scenario with 2 tests and abortOnFailure"
-abortOnFailure: true
+description: "US5: Multi-step scenario with 2 tests"
 ---
 
 ## Test

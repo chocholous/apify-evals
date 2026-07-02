@@ -1,7 +1,6 @@
 ---
 name: mcpc-preset-test
 description: Test mcpc preset with real MCP server
-abortOnFailure: false
 ---
 
 ## Test
