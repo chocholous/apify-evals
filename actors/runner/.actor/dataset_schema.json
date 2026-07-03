@@ -21,20 +21,19 @@
             }
         },
         "verdicts": {
-            "title": "Checkpoint Verdicts",
+            "title": "Checkpoints",
             "transformation": {
-                "fields": ["scenarioName", "testIndex", "verdicts"],
+                "fields": ["testIndex", "verdicts"],
                 "unwind": ["verdicts"]
             },
             "display": {
                 "component": "table",
                 "properties": {
-                    "scenarioName": { "label": "Scenario",   "format": "text" },
                     "testIndex":    { "label": "#",          "format": "number" },
-                    "checkType":    { "label": "Check Type", "format": "text" },
-                    "checkValue":   { "label": "Check",      "format": "text" },
-                    "verdict":      { "label": "Verdict",    "format": "text" },
-                    "evidence":     { "label": "Evidence",   "format": "text" }
+                    "checkType":    { "label": "Check Type", "format": "text"   },
+                    "checkValue":   { "label": "Check",      "format": "text"   },
+                    "verdict":      { "label": "Verdict",    "format": "text"   },
+                    "evidence":     { "label": "Evidence",   "format": "text"   }
                 }
             }
         }
