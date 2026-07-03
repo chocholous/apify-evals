@@ -242,7 +242,7 @@ V Apify Docker kontejneru bude auth řešený přes env var `CLAUDE_CODE_OAUTH_T
 
 ### Rozhodnutí: Jeden fat Dockerfile se všemi agent CLI
 
-Jeden `Dockerfile` v rootu repa instaluje všechny CLI nástroje (Claude Code, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input parametr `agent`.
+Jeden `Dockerfile` v `actors/runner/` instaluje všechny CLI nástroje (Claude Code, Codex, OpenCode, Apify CLI). Agent se vybírá za běhu přes input parametr `agent`.
 
 ### Zamítnuto: Separate Dockerfiles per agent, Actor.metamorph()
 
