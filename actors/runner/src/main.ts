@@ -235,7 +235,7 @@ if (apifyToken && actorRunId) {
         // /run-eval-scenario skill) can read the anchor without entering
         // the runner container. Reuse buildRunnerStartedPayload so the
         // KVS payload and the on-disk file cannot drift on the `source` string.
-        await Actor.setValue('RUNNER-STARTED-AT', buildRunnerStartedPayload(runnerStartedAt), { contentType: 'application/json' });
+        await Actor.setValue('RUNNER-STARTED-AT', buildRunnerStartedPayload(runnerStartedAt));
         log.info(`[runner-started] ${runnerStartedAt} (single-clock anchor for checkpoint scripts)`);
     }
 } else if (!apifyToken) {
