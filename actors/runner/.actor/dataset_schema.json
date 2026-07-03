@@ -6,21 +6,40 @@
             "title": "Eval Results",
             "transformation": {
                 "fields": [
-                    "testIndex",
                     "overallVerdict",
                     "testPrompt",
-                    "agentOutput",
-                    "verdicts"
+                    "agentOutput"
                 ]
             },
             "display": {
                 "component": "table",
                 "properties": {
-                    "testIndex":      { "label": "Test #",       "format": "number" },
-                    "overallVerdict": { "label": "Verdict",      "format": "text"   },
-                    "testPrompt":     { "label": "Prompt",       "format": "text"   },
-                    "agentOutput":    { "label": "Agent Output", "format": "text"   },
-                    "verdicts":       { "label": "Checks",       "format": "array"  }
+                    "overallVerdict": { "label": "Verdict",      "format": "text" },
+                    "testPrompt":     { "label": "Prompt",       "format": "text" },
+                    "agentOutput":    { "label": "Agent Output", "format": "text" }
+                }
+            }
+        },
+        "verdicts": {
+            "title": "Verdict Checks",
+            "transformation": {
+                "fields": [
+                    "testIndex",
+                    "verdicts.verdict",
+                    "verdicts.checkType",
+                    "verdicts.checkValue",
+                    "verdicts.evidence"
+                ],
+                "unwind": ["verdicts"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "testIndex":           { "label": "Test",       "format": "number" },
+                    "verdicts.verdict":    { "label": "Verdict",    "format": "text"   },
+                    "verdicts.checkType":  { "label": "Check Type", "format": "text"   },
+                    "verdicts.checkValue": { "label": "Check",      "format": "text"   },
+                    "verdicts.evidence":   { "label": "Evidence",   "format": "text"   }
                 }
             }
         }
