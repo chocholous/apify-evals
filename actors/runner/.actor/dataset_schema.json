@@ -21,15 +21,16 @@
             }
         },
         "verdicts": {
-            "title": "Checkpoints",
+            "title": "Tests",
             "transformation": {
                 "fields": ["testIndex", "verdicts"],
-                "unwind": ["verdicts"]
+                "unwind": ["verdicts"],
+                "omit": ["evalCritique", "evalGapSeverity"]
             },
             "display": {
                 "component": "table",
                 "properties": {
-                    "testIndex":    { "label": "#",          "format": "number" },
+                    "testIndex":    { "label": "Test Index", "format": "number" },
                     "checkType":    { "label": "Check Type", "format": "text"   },
                     "checkValue":   { "label": "Check",      "format": "text"   },
                     "verdict":      { "label": "Verdict",    "format": "text"   },
