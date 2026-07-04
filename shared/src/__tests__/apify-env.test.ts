@@ -57,4 +57,12 @@ describe('buildChildEnv', () => {
         expect(APIFY_RUNTIME_KEYS_TO_STRIP).toContain('APIFY_DEFAULT_DATASET_ID');
         expect(APIFY_RUNTIME_KEYS_TO_STRIP).toContain('APIFY_IS_AT_HOME');
     });
+
+    it('strips NODE_ENV so scaffolded projects install devDependencies as-usual', () => {
+        // apify/actor-node sets NODE_ENV=production; if that leaks into the agent's
+        // shell, `apify create` templates that rely on a devDep at runtime (e.g. tsx)
+        // fail because `npm install --omit=dev` drops it.
+        expect(buildChildEnv({ NODE_ENV: 'production' }, '/tmp/ws').NODE_ENV).toBeUndefined();
+        expect(APIFY_RUNTIME_KEYS_TO_STRIP).toContain('NODE_ENV');
+    });
 });

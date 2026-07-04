@@ -34,6 +34,15 @@ export const APIFY_RUNTIME_KEYS_TO_STRIP = [
     'ACTOR_EVENTS_WEBSOCKET_URL', 'APIFY_ACTOR_EVENTS_WS_URL',
     'APIFY_TIMEOUT_AT',
     'APIFY_PROXY_PASSWORD',
+    // NODE_ENV is set to `production` by the apify/actor-node base image so the
+    // runner's own `npm install` skips devDependencies. When it leaks into the
+    // agent's subprocess, any scaffolded project the agent runs there inherits
+    // it too — so `apify create foo -t ts-empty && cd foo && apify run` fails
+    // with `sh: tsx: not found` because `npm install --omit=dev` drops `tsx`,
+    // even though the template lists it as a devDependency it needs at runtime.
+    // Stripping it here restores the "fresh dev machine" expectation that
+    // scaffolded templates are built against.
+    'NODE_ENV',
 ] as const;
 
 /**

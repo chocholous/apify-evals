@@ -309,7 +309,7 @@ export function runInitPreset(ctx: InitContext): InitResult {
 
         case 'cli_native': {
             const script = `
-                which gh >/dev/null 2>&1 || echo "gh not found (install with: brew install gh)"
+                which gh >/dev/null 2>&1 || echo "gh not found (install with: apk add github-cli / apt-get install gh / brew install gh)"
                 which apify >/dev/null 2>&1 || echo "apify not found (install with: npm i -g apify-cli)"
             `;
             const result = runScript(script, ctx.workDir, 'cli_native');
@@ -390,7 +390,7 @@ export function runInitPreset(ctx: InitContext): InitResult {
             //       (which would imply the agent bypassed the CLI).
             const script = `
                 which apify >/dev/null 2>&1 || echo "apify not found (install with: npm i -g apify-cli)"
-                which gh >/dev/null 2>&1 || echo "gh not found (install with: brew install gh)"
+                which gh >/dev/null 2>&1 || echo "gh not found (install with: apk add github-cli / apt-get install gh / brew install gh)"
             `;
             const result = runScript(script, ctx.workDir, 'cli_only');
             log.push(`cli_only: ${result.output}`);
@@ -456,7 +456,7 @@ export function runInitPreset(ctx: InitContext): InitResult {
             // it would normally have, with visibility into what's available.
             const script = `
                 which apify >/dev/null 2>&1 || echo "apify CLI not found (install with: npm i -g apify-cli)"
-                which gh >/dev/null 2>&1 || echo "gh not found (install with: brew install gh)"
+                which gh >/dev/null 2>&1 || echo "gh not found (install with: apk add github-cli / apt-get install gh / brew install gh)"
                 which curl >/dev/null 2>&1 || echo "curl not found (required for REST API calls)"
                 which jq >/dev/null 2>&1 || echo "jq not found (recommended for parsing API responses)"
             `;
