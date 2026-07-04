@@ -23,7 +23,13 @@ RUN apk add --no-cache \
     build-base \
     wget ca-certificates \
     zip unzip \
+    github-cli \
     && ln -sf /usr/bin/python3 /usr/bin/python
+
+# Silence the apify-cli "OS keyring unavailable" warning on headless Alpine —
+# there's no gnome-keyring / kwallet here, so credential lookup falls back to
+# the file-backed store on every login. The env var makes that fallback silent.
+ENV APIFY_DISABLE_KEYRING=1
 
 # Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash \
@@ -39,7 +45,7 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 RUN npm install -g @openai/codex apify-cli
 
 # Verify all CLIs are available
-RUN claude --version && codex --version && opencode --version && apify --version
+RUN claude --version && codex --version && opencode --version && apify --version && gh --version
 
 # Install runtime deps as root (npm needs write access to node_modules)
 COPY package*.json ./
